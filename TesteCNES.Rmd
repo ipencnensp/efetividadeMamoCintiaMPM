@@ -1,0 +1,204 @@
+---
+title: "CNES"
+author: "Cintia Mesquita"
+date: "02/12/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(read.dbc)
+library(tidyverse)
+library(foreign)
+library(lubridate)
+library(data.table)
+```
+```{r}
+read.dbc("~/datasus.gov.br/cnes/Equipamentos/EQAM1805.dbc")
+```
+```{r}
+EQSP_2019 <- read_csv("~/datasus.gov.br/CNES/ftp_200508/dissemin/publicos/CNES/200508_/Dados/EQ/CSVs/EQSP_2019.csv", 
+    col_types = cols(CODEQUIP = col_character(), 
+        QT_EXIST = col_integer(), QT_USO = col_integer(), 
+        IND_SUS = col_integer(), IND_NSUS = col_integer()))
+```
+```{r}
+EQSP_2019 %>% select(ESFERA_A) %>% count(ESFERA_A)
+```
+
+```{r}
+EQSP_1912 <- EQSP_2019 %>%
+  filter(CODEQUIP %in% c("02","03","17")# filtro para mamógrafo 
+         & COMPETEN > 201911 & COMPETEN < 202001) 
+```
+```{r}
+EQSP_1912 %>% 
+  #summarise(Qtd=sum(QT_USO)) %>%
+  summarise(Qtd=sum(IND_SUS)) 
+```
+```{r}
+EQGO_2018 <- read_csv("~/datasus.gov.br/CNES/ftp_200508/dissemin/publicos/CNES/200508_/Dados/EQ/CSVs/EQGO_2018.csv", 
+    col_types = cols(CODEQUIP = col_character(), 
+        QT_EXIST = col_integer(), QT_USO = col_integer(), 
+        IND_SUS = col_integer(), IND_NSUS = col_integer()))
+```
+
+```{r}
+EQGO_1812 <- EQGO_2018 %>%
+  filter(CODEQUIP %in% c("02","03","17")# filtro para mamógrafo 
+         & COMPETEN > 201811 & COMPETEN < 201901)
+```
+```{r}
+EQGO_1812 %>% 
+  mutate(Uso=sum(QT_USO),Nosus=sum(IND_SUS),Nosus/Uso) 
+```
+
+```{r}
+EqGO <- read.dbc("~/SIA_SUS/SIA_SUS/EQ/EQGO1912.dbc")
+```
+```{r}
+EqGO$CODEQUIP <- as.character(EqGO$CODEQUIP)
+EqGO$IND_SUS <- as.integer(EqGO$IND_SUS)
+```
+```{r}
+EquipGO1912 <- EqGO %>%
+  filter(CODEQUIP %in% c("02","03","17")) # filtro p/ mamógrafo 
+```
+```{r}
+EquipGO1912 %>% 
+  #count(QT_USO)
+  summarise(Qtd=sum(QT_USO))
+```
+```{r}
+EqSC <- read.dbc("~/SIA_SUS/SIA_SUS/EQ/EQSC1912.dbc")
+```
+```{r}
+EqSC$CODEQUIP <- as.character(EqSC$CODEQUIP)
+EqSC$IND_SUS <- as.integer(EqSC$IND_SUS)
+```
+```{r}
+EquipSC1912 <- EqSC %>%
+  filter(CODEQUIP %in% c("02","03","17")) # filtro p/ mamógrafo
+```
+```{r}
+head(EquipSC1912)
+```
+```{r}
+EquipSC1912 %>% 
+  summarise(Qtd=sum(QT_USO))
+```
+```{r}
+EqSP <- read.dbc("~/SIA_SUS/SIA_SUS/EQ/EQSP1912.dbc")
+```
+```{r}
+EqSP$CODEQUIP <- as.character(EqSP$CODEQUIP)
+```
+```{r}
+EquipSP1912 <- EqSP %>%
+  filter(CODEQUIP %in% c("02","03","17")) # filtro para mamógrafo 
+```
+```{r}
+EquipSP1912 %>% 
+  summarise(Qtd=sum(QT_USO))
+```
+```{r}
+Eq03 <- read.dbc("~/datasus.gov.br/cnes/Equipamentos/EQAM1803.dbc")
+```
+```{r}
+E03 <- Eq03 %>% select(CODUFMUN,TIPEQUIP,CODEQUIP,QT_EXIST,QT_USO,COMPETEN) %>% group_by(CODEQUIP,QT_USO,COMPETEN) %>% count(QT_USO)
+```
+
+
+```{r}
+Eq %>% select(CODUFMUN,TIPEQUIP,CODEQUIP,QT_EXIST,QT_USO,COMPETEN) %>% group_by(CODEQUIP) %>% count(CODEQUIP)
+# O CODEQUIP é o código do equipamento de 01 até 99
+```
+```{r}
+Eq %>% select(TIPEQUIP,CODEQUIP,QT_EXIST,QT_USO) %>% group_by(TIPEQUIP) %>% count(TIPEQUIP)
+# TIPEQUIP código do tipo do equipamento de 1 até 8
+```
+TPEQUIP -> Código do tipo do equipamento
+1	Equipamentos de Diagnostico por Imagem
+2	Equipamentos de Infra-Estrutura
+3	Equipamentos por Metodos Opticos
+4	Equipamentos por Metodos Graficos
+5	Equipamentos para Manutencao da Vida
+6	Outros Equipamentos
+7	Equipamentos de Odontologia
+8	Equipamentos de Audiologia
+
+CODEQUIP -> Código do equipamento
+1  EQUIPAMENTOS DE DIAGNÓSTICO POR IMAGEM
+01 GAMA CAMARA
+02 MAMOGRAFO COM COMANDO SIMPLES
+03 MAMOGRAFO COM ESTEREOTAXIA
+04 RAIO X ATE 100 MA
+05 RAIO X DE 100 A 500 MA
+06 RAIO X MAIS DE 500MA
+07 RAIO X DENTARIO
+08 RAIO X COM FLUOROSCOPIA
+09 RAIO X PARA DENSITOMETRIA OSSEA
+10 RAIO X PARA HEMODINAMICA
+11 TOMÓGRAFO COMPUTADORIZADO
+12 RESSONANCIA MAGNETICA
+13 ULTRASSOM DOPPLER COLORIDO
+14 ULTRASSOM ECOGRAFO
+15 ULTRASSOM CONVENCIONAL
+16 PROCESSADORA DE FILME EXCLUSIVA PARA MAMOGRAFIA
+17 MAMOGRAFO COMPUTADORIZADO
+18 PET/CT
+```{r}
+Eq_m <- filter(Eq, ( CODEQUIP == c("02","03","17") ) )
+
+view(Eq_m)
+
+#Eq_m %>% group_by(CODEQUIP,QT_USO,QT_EXIST)%>% arrange(QT_EXIST) #%>%
+  #count(QT_EXIST) #%>%
+  #summarise( Qtd=sum(QT_USO))
+```
+```{r}
+Eq <- filter(Eq, ( CODEQUIP == c("02","03","17") )) 
+
+view(Eq)
+```
+
+CODUFMUN -> Código do município do estabelecimento UF+ MUNIC (sem dígito)
+11 Rondônia                                                            
+12 Acre                                                          
+13 Amazonas                                                        
+14 Roraima                                                              
+15 Pará                                                                      
+16 Amapá                                                                      
+17 Tocantins                                                                
+21 Maranhão                                                                  
+22 Piauí                                                                      
+23 Ceará                                                                       
+24 Rio Grande do Norte                                                        
+25 Paraíba                                                                 
+26,20 Pernambuco                                                               
+27 Alagoas                                                                     
+28 Sergipe                                                                     
+29 Bahia                                                                       
+31 Minas Gerais                                                                
+32 Espírito Santo                                                             
+33 Rio de Janeiro                                                             
+35 São Paulo                                                                   
+41 Paraná                                                                      
+42 Santa Catarina                                                              
+43 Rio Grande do Sul                                                          
+50 Mato Grosso do Sul                                                          
+51 Mato Grosso                                                                 
+52 Goiás                                                                       
+53 Distrito Federal                                                            
+00 Ignorado/exterior 
+```{r}
+Eq %>% group_by(CODUFMUN) %>% count(CODUFMUN)
+```
+
+```{r}
+Eq %>% group_by(COMPETEN) %>% count(COMPETEN)
+```
+COMPETEN -> Ano e Mês de competência da informação (AAAAMM)

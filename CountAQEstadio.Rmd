@@ -1,0 +1,174 @@
+---
+title: "CountAQEstadio"
+author: "Cintia Mesquita"
+date: "09/02/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(foreign)
+library(data.table)
+library(highcharter)
+library(DT)
+library(janitor)
+library(knitr)
+library(descr)
+library(pander)
+library(plotly)
+library(read.dbc)
+```
+
+# leitura dos CSVs de Quimioterapia - filtros para CA de mama
+```{r}
+aq_tudo <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios.csv")
+```
+
+Data de atendimento ao paciente (AP_CMP); e tipo de APAC 1-inicial (AP_TPAPAC)
+```{r}
+estadio_brasil <- aq_tudo %>% group_by(AnoMesAtendimento,Regiao,Estadio)
+
+estadio_sul <- estadio_brasil %>% filter(Regiao=="Sul")
+estadio_sudeste <- estadio_brasil %>% filter(Regiao=="Sudeste")
+estadio_centro_oeste <- estadio_brasil %>% filter(Regiao=="Centro-oeste")
+estadio_nordeste <- estadio_brasil %>% filter(Regiao=="Nordeste")
+estadio_norte <- estadio_brasil %>% filter(Regiao=="Norte")
+
+```
+
+Tabela - Região Sul
+```{r}
+tabyl(estadio_sul,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Região Sul")
+```
+Gráfico - Região Sul
+```{r}
+estadio_sul %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(QTD = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = QTD, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Região Sul", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+```{r}
+tabyl(estadio_sudeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Região Sudeste")
+```
+```{r}
+tabyl(estadio_centro_oeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Região Centro-oeste")
+```
+```{r}
+tabyl(estadio_nordeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Região Nordeste")
+```
+```{r}
+tabyl(estadio_norte,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Região Norte")
+```
+
+```{r}
+estadio_brasil_por_F_M <- aq_tudo %>% group_by(AnoMesAtendimento,Sexo,Estadio)
+
+```
+
+```{r}
+tabyl(estadio_brasil_por_F_M,Sexo,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Brasil")
+```
+
+```{r}
+estadio_brasil_por_sexo <- aq_tudo %>% group_by(AnoMesAtendimento,Sexo,Estadio)
+
+estadio_F <- estadio_brasil_por_sexo %>% filter(Sexo=="F")
+estadio_M <- estadio_brasil_por_sexo %>% filter(Sexo=="M")
+
+```
+
+```{r}
+tabyl(estadio_F,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Mulheres Brasil")
+```
+
+```{r}
+tabyl(estadio_M,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals("row") %>%
+#adorn_title("combined")
+datatable(caption = "Homens Brasil")
+```
+
+```{r}
+estadio_brasil %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Quimioterapia Total", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+## Tipos de APACs
+APACs AQ* únicas (2019/2018/2017/2016/2015/2014/2013/2012/2011/2010-Não 2008/2009-Sim)
+Iniciar em 2010 - APACs tipo 1 e 3
+
+#Formatos AQs
+```{r}
+aq_SC19 <- read.dbc("~/datasus.gov.br/SIASUS/AQ-LaudosDiversos/AQSC1912.dbc") # formato DATASUS
+```
+```{r}
+aq_eP19 <- read.csv("~/datasus.gov.br/SIASUS/AQ-LaudosDiversos/CSVs/AQSC_2019.csv", header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1") # Agrupado por UF e AAAA
+```
+```{r}
+aq_tudo <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios.csv") # organizado por Data de Atendimento ao paciente (competência) e por região
+```
+```{r}
+aq_agrupado <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios_Agrupado.csv") # agrupamento de observações (se for igual agrupa)
+```
+```{r}
+head(aq_SC19)
+head(aq_eP19)
+head(aq_tudo)
+head(aq_agrupado)
+```
+No formato DBC (AQufaamm.dbc) tem 64 variáveis 
+No formato CSV (AQuf_aaaa.csv) tem 67 variáveis e foram adicionados ESTADO, ANO e MES
+No formato CSV (AQ_Estadios.csv) tem 6 variáveis e os estados foram agrupados por região
+No formato CSV (AQ_Estadios_Agrupado.cvs) tem 7 variáveis mais o agrupamento de observações (Estado,Regiao,AnoMesAtendimento, Estadio, Sexo, Idade) formou o Qtd
+
+#Informações de interesse <- AQs
+Estado - ok
+Regiao - ok
+AnoAtendimento - ok
+Estadio - ok
+Sexo - ok
+Idade - ok

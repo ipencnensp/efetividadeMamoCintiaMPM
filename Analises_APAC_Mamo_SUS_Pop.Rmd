@@ -1,0 +1,1179 @@
+---
+title: "Analises_APAC_Mamo_SUS"
+author: "Cintia Mesquita"
+date: "30/10/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, warning = FALSE)
+flextable::set_flextable_defaults(na_str = " ", decimal.mark = ",", big.mark = ".")
+```
+
+## Carregando as bibliotecas
+
+```{r Bibliotecas}
+library(sparklyr)
+library(tidyverse)
+library(foreign)
+library(flextable)
+library(officer)
+library(webshot)
+library(data.table)
+library(highcharter)
+library(DT)
+library(janitor)
+library(descr)
+library(pander)
+library(plotly)
+library(ggpubr)
+library(formattable)
+```
+
+## Carregamento dos dados da População de Mulheres 
+
+```{r}
+pop_df <- read_csv("CSV/PopulacoaFeminina2010a2019.csv")
+```
+
+
+## Configuração do Spark
+
+```{r ConfiguracaoSpark}
+config <- spark_config()
+config$`sparklyr.cores.local` <- 16
+config$`sparklyr.shell.driver-memory` <- "64G"
+config$spark.memory.fraction <- 0.9
+config$spark.dynamicAllocation.enabled <- "true" # pode ser necessario em alguns casos
+
+sc <- spark_connect(master = "local", config = config)
+```
+
+## Carregar os dados da base PAs em CSVs_Mamo2
+
+```{r CarregarCSVs_Mamo2}
+diretorio <- "~/datasus.gov.br/SIASUS/PA-LaudosDiversos/CSVs_Mamo2/"
+
+leitura <- spark_read_csv(sc, name="PAMamos",path=diretorio)
+```
+
+## Filtro e tratamentos
+
+#Filtros aplicados nas variáveis:
+
+- Periodo de competência da APAC entre 2010 e 2019; 
+- Idade entre 19 e 99 anos;
+- Sexo feminino;
+
+
+```{r FiltrosCSVs_Mamo2}
+pa_df_spark_original <-  tbl(sc, "pamamos")
+pa_df_spark_filtrado <- filter(pa_df_spark_original,
+                (PA_CMP > 200912 & PA_CMP < 202001) #Entre 2010 e 2019
+                & (PA_IDADE > 19 & PA_IDADE < 100) #Entre 20 e 99 anos
+                & PA_SEXO=="F" ) #Apenas com info de sexo feminino
+
+```
+
+
+#Tratamentos aplicados com a criação de colunas:
+
+- AnoMesAtendimento para tranformação de mes e ano de atendimento em data;
+- Identificação dos códigos de procedimentos;
+- Região com os respectivos Estados;
+- Idade por faixa etária.
+
+```{r TratamentosCSVs_Mamo2}
+pa_df_spark_tratado <- pa_df_spark_filtrado %>%
+  
+  mutate(AnoAtendimento = as.integer(PA_CMP/100)) %>%
+  
+  mutate(AnoMesAtendimento = as.Date(paste0(as.integer(PA_CMP/100), "-", as.integer(PA_CMP%%100), "-01"))) %>%
+  
+  mutate(Procedimento=
+           case_when(
+            PA_PROC_ID==204030030~ "Diagnostico",
+            PA_PROC_ID==204030188~ "Rastreamento")) %>%
+  
+  mutate(Regiao=
+           case_when(
+            ESTADO=="PR"~ "Sul",
+            ESTADO=="RS"~ "Sul",
+            ESTADO=="SC"~ "Sul",
+            ESTADO=="ES"~ "Sudeste",
+            ESTADO=="MG"~ "Sudeste",
+            ESTADO=="RJ"~ "Sudeste",
+            ESTADO=="SP"~ "Sudeste",
+            ESTADO=="DF"~ "Centro-oeste",
+            ESTADO=="GO"~ "Centro-oeste",
+            ESTADO=="MS"~ "Centro-oeste",
+            ESTADO=="MT"~ "Centro-oeste",
+            ESTADO=="AL"~ "Nordeste",
+            ESTADO=="BA"~ "Nordeste",
+            ESTADO=="CE"~ "Nordeste",
+            ESTADO=="MA"~ "Nordeste",
+            ESTADO=="PB"~ "Nordeste",
+            ESTADO=="PE"~ "Nordeste",
+            ESTADO=="PI"~ "Nordeste",
+            ESTADO=="RN"~ "Nordeste",
+            ESTADO=="SE"~ "Nordeste",
+            ESTADO=="AC"~ "Norte",
+            ESTADO=="AM"~ "Norte",
+            ESTADO=="AP"~ "Norte",
+            ESTADO=="PA"~ "Norte",
+            ESTADO=="RO"~ "Norte",
+            ESTADO=="RR"~ "Norte",
+            ESTADO=="TO"~ "Norte")) %>%
+         
+          mutate(FaixaEtaria = case_when(
+            PA_IDADE<40~ "<=39",
+            PA_IDADE<50~ "40-49",
+            PA_IDADE<70~ "50-69",
+            TRUE~ ">=70"))
+              
+```
+
+## Seleção, Identificação e Agrupamento
+
+#Seleção e nomeação das variáveis utilizadas nas análises:
+
+- Regiao;
+- AnoAtendimento;
+- AnoMesAtendimento;
+- Procedimento;
+- FaixaEtaria;
+- QtdApresentada=PA_QTDPRO
+
+#Agrupamento das variáveis para o somatório da QtdApresentada e melhorar o desempenho das análises:
+
+- Regiao;
+- AnoAtendimento;
+- AnoMesAtendimento;
+- Procedimento;
+- FaixaEtaria;
+
+Resultado final com 4800 linhas
+```{r SelecaoIdentificacaoCSVs_Mamo2}
+ pa_df_spark_selecao <- pa_df_spark_tratado %>%
+  
+  select(Regiao, AnoAtendimento, AnoMesAtendimento, Procedimento, FaixaEtaria, QtdApresentada=PA_QTDPRO) %>%
+  
+  group_by(Regiao, AnoAtendimento, AnoMesAtendimento, Procedimento, FaixaEtaria) %>%
+  
+  summarise(QtdApresentada = sum(QtdApresentada), .groups = 'drop')
+
+```
+
+## Transformação do DataFrame do Spark para Local
+
+# A transformação do dataframe já filtrado e agrupado permite que as consultas, gráficos e tabelas sejam executadas de forma mais rápida
+
+```{r TransformaDataFrame}
+pa_df_selecao <- as.data.frame(pa_df_spark_selecao)
+```
+
+## Desconexão do Spark
+
+# O spark é desconectado pois não será mais utilizado posteriormente
+
+```{r DesconectaSpark}
+spark_disconnect_all()
+```
+
+# União com dados populacionais
+
+## Soma e agrupa todos os procedimentos de um mesmo Ano
+
+```{r}
+pa_df_selecao_ano <- pa_df_selecao %>%
+  select(Regiao, AnoAtendimento, Procedimento, FaixaEtaria, QtdApresentada) %>%
+  group_by(Regiao, AnoAtendimento, Procedimento, FaixaEtaria) %>% summarise(QtdApresentada = sum(QtdApresentada), .groups = 'drop')
+```
+
+# Merge dos procedimentos por Ano com População em Mulheres no SUS
+
+```{r}
+pa_df_pop <- merge(pa_df_selecao_ano, pop_df,
+                   by.x = c("Regiao","FaixaEtaria","AnoAtendimento"),
+                   by.y = c("Regiao","FaixaEtaria","Ano"))
+```
+
+# Análises dos exames de mamografia
+
+##	Avaliar o desenvolvimento dos exames de rastreamento e de diagnóstico no Brasil por mês no período de 2010 a 2019
+
+Para analisar uma região basta aplicar um filtro antes do group_by (por exemplo, Filter=="Sul")
+
+```{r AnaliseMamoBrasil}
+pa_df_selecao %>% 
+  group_by(Procedimento,AnoMesAtendimento) %>%
+  summarise(Qtd=sum(QtdApresentada), .groups = 'drop') %>%
+  ggplot(aes(x=AnoMesAtendimento, y=Qtd/1000, group=Procedimento, color=Procedimento)) + 
+  geom_line(aes(linetype=Procedimento)) +
+  geom_point(aes(shape=Procedimento)) +
+  labs_pubr() + theme_pubr() +
+  scale_x_date(breaks = seq(as.Date("2010-10-01"), as.Date("2020-10-01"), by="12 months"), date_labels = "Out %Y") + # month/year
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  labs(x = " ", y = "Quantidade (mil)") -> graficoA
+ggsave(filename = "~/SIA_SUS/SIA_SUS/Tabelas/pa_desenvolvimento_exames.png", plot = graficoA, dpi=300)
+graficoA
+
+#dev.print(file="~/SIA_SUS/SIA_SUS/Tabelas/pa_desenvolvimento_exames.png", device=png, width=550)
+```
+
+#Correção da quantidade de exames pela população de mulheres do SUS (sem faixa etaria).
+```{r}
+pa_df_pop_norm <- pa_df_pop %>%
+  group_by(Regiao,Procedimento) %>%
+  summarise(Qtd=sum(QtdApresentada), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(PopNormPercent = round((Qtd/(PopulacaoSUS/100)), 2)) %>%
+  select(Regiao, Procedimento, Qtd, PopulacaoSUS, PopNorm, PopNormPercent)
+```
+
+#Correção da quantidade de exames pela população de mulheres do SUS por faixa etaria.
+```{r}
+pa_df_pop_norm_com_faixa_etaria <- pa_df_pop %>% group_by(Regiao,Procedimento,FaixaEtaria) %>%
+  summarise(QtdApresentada=sum(QtdApresentada), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((QtdApresentada/(PopulacaoSUS))*1000000, 2)) %>%
+  select(Regiao,Procedimento,FaixaEtaria, PopNorm)
+#view(pa_df_pop_norm_com_faixa_etaria)
+```
+## Transformação da Faixa Etária
+
+# Transformação da faixa etária para colunas incluindo percentuais
+
+```{r TranformacaoFaixaEtariaColuna}
+pa_df_faixa_etaria_como_coluna_pop <- pa_df_pop_norm_com_faixa_etaria %>%
+  pivot_wider(names_from = FaixaEtaria, values_from = PopNorm, values_fn = sum) %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  #adorn_totals("col") %>%
+  adorn_percentages("row") %>%
+  #rename_with(~ str_c(., 'pct'), everything()) %>% 
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+
+## Analisar a proporção de mamografia de rastreamento e de diagnóstico na faixa etária preconizada para o período de 2010 e 2019;
+
+# Procedimento Rastreamento
+
+```{r ProcedimentoRastreamento}
+pa_df_faixa_etaria_como_coluna_rastreamento_pop <- pa_df_faixa_etaria_como_coluna_pop %>% filter(Procedimento=="Rastreamento") %>% select("Regiao", "<=39", "40-49", "50-69", ">=70")
+
+pa_ft_faixa_etaria_como_coluna_pop <- flextable(pa_df_faixa_etaria_como_coluna_rastreamento_pop) %>%
+  set_caption(caption = "Análise da Faixa Etária em Mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2010 e 2019")
+ 
+pa_ft_faixa_etaria_como_coluna_pop <-
+  add_header_row(x = pa_ft_faixa_etaria_como_coluna_pop, values = c("Regiao", "Exames de rastreamento/1.000.000 mulheres"), colwidths = c(1, 4)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+pa_ft_faixa_etaria_como_coluna_pop <-
+  theme_booktabs(pa_ft_faixa_etaria_como_coluna_pop) %>%
+  bold(j = "50-69", bold = TRUE)  %>%
+  align(j = 2:5, part = "header", align = "center")  %>% 
+  align(j = 2:5, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+pa_ft_faixa_etaria_como_coluna_pop 
+
+save_as_docx("PAs Faixa Etária Rastreamento" = pa_ft_faixa_etaria_como_coluna_pop, path = "~/SIA_SUS/SIA_SUS/Tabelas/pa_faixaetaria_rastreamento.docx")
+#img <- save_as_image(pa_ft_faixa_etaria_como_coluna_pop, path = "~/SIA_SUS/SIA_SUS/Tabelas/pa_faixaetaria_rastreamento.png")
+```
+# Procedimento Diagnóstico
+
+```{r ProcedimentoDiagnostico}
+pa_df_faixa_etaria_como_coluna_diagnostico <- pa_df_faixa_etaria_como_coluna_pop %>% filter(Procedimento=="Diagnostico") %>% select("Regiao", "<=39", "40-49", "50-69", ">=70")
+
+pa_ft_faixa_etaria_como_coluna <- flextable(pa_df_faixa_etaria_como_coluna_diagnostico) %>%
+  set_caption(caption = "Análise da Faixa Etária em Mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2010 e 2019")
+ 
+pa_ft_faixa_etaria_como_coluna <-
+  add_header_row(x = pa_ft_faixa_etaria_como_coluna, values = c("Regiao", "Exames de diagnóstico/1.000.000 mulheres"), colwidths = c(1, 4)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+pa_ft_faixa_etaria_como_coluna <-
+  theme_booktabs(pa_ft_faixa_etaria_como_coluna) %>%
+  bold(j = "50-69", bold = TRUE)  %>%
+  align(j = 2:5, part = "header", align = "center")  %>% 
+  align(j = 2:5, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+pa_ft_faixa_etaria_como_coluna 
+
+save_as_docx("PAs Faixa Etária Diagnóstico" = pa_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/pa_faixaetaria_diagnostico.docx")
+img <- save_as_image(pa_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/pa_faixaetaria_diagnostico.png")
+```
+
+## Carregar os dados da base AQs em CSVs202103 
+
+Como os arquivos CSVs tem colunas diferentes, é utilizado uma função que lê cada arquivo do diretório efetuando o filtro e selecionando apenas as variáveis que serão utilizadas
+
+## Filtro e tratamentos
+
+#Filtros aplicados nas variáveis:
+
+- Período de competência da APAC entre 2010 e 2019; 
+- Idade entre 19 e 99 anos;
+- Sexo feminino;
+- CIDs do câncer de mama (C500, C501, C502, C503, C504, C505, C506, C508 e C509)
+- Tipos de APAC: 1 e 3
+- Estadiamentos clínicos (0, 1, 2, 3 e 4)
+
+# Tratamentos aplicado com a criação de colunas:
+
+- Transforma mês e ano de atendimento em data
+- Região com os respectivos Estados;
+- Idade por faixa etária.
+
+# seleção e identificação
+
+- Região
+- AnoMesAtendimento
+- Estadio
+- FaixaEtaria
+
+Os dados com filtros aplicados, tratados e selecionados foram carregados num dataframe
+
+```{r CarregarCSVs202103AQs}
+
+carregaArquivoAq = function(arquivoCsvAq){
+  
+  #Para cada arquivo, le o CSV
+  dataframeCsvAq <- read.csv(arquivoCsvAq, header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1") %>%
+    
+    filter(
+      (AP_CMP > 200912 & AP_CMP < 202001) #Entre 2010 e 2019
+      & (AP_NUIDADE > 19 & AP_NUIDADE < 100) #Entre 20 e 99 anos
+      & (AP_SEXO=="F")  #Apenas com info de sexo feminino
+      & (AP_CIDPRI %in% c("C500","C501","C502","C503","C504","C505","C506","C508","C509"))
+      & (AP_TPAPAC=="1" | AP_TPAPAC=="3") #Apenas tipo apac 1 e 3
+      & (AQ_ESTADI==0|AQ_ESTADI==1|AQ_ESTADI==2|AQ_ESTADI==3|AQ_ESTADI==4)
+    ) %>%
+    
+    mutate(AnoAtendimento = as.integer(AP_CMP/100)) %>%
+    
+    mutate(AnoMesAtendimento = as.Date(paste0(as.integer(AP_CMP/100), "-", as.integer(AP_CMP%%100), "-01"), format="%Y-%m-%d")) %>%
+    
+    mutate(Estadio = as.character(AQ_ESTADI)) %>%
+    
+    mutate(Regiao=
+             case_when(
+              ESTADO=="PR"~ "Sul",
+              ESTADO=="RS"~ "Sul",
+              ESTADO=="SC"~ "Sul",
+              ESTADO=="ES"~ "Sudeste",
+              ESTADO=="MG"~ "Sudeste",
+              ESTADO=="RJ"~ "Sudeste",
+              ESTADO=="SP"~ "Sudeste",
+              ESTADO=="DF"~ "Centro-oeste",
+              ESTADO=="GO"~ "Centro-oeste",
+              ESTADO=="MS"~ "Centro-oeste",
+              ESTADO=="MT"~ "Centro-oeste",
+              ESTADO=="AL"~ "Nordeste",
+              ESTADO=="BA"~ "Nordeste",
+              ESTADO=="CE"~ "Nordeste",
+              ESTADO=="MA"~ "Nordeste",
+              ESTADO=="PB"~ "Nordeste",
+              ESTADO=="PE"~ "Nordeste",
+              ESTADO=="PI"~ "Nordeste",
+              ESTADO=="RN"~ "Nordeste",
+              ESTADO=="SE"~ "Nordeste",
+              ESTADO=="AC"~ "Norte",
+              ESTADO=="AM"~ "Norte",
+              ESTADO=="AP"~ "Norte",
+              ESTADO=="PA"~ "Norte",
+              ESTADO=="RO"~ "Norte",
+              ESTADO=="RR"~ "Norte",
+              ESTADO=="TO"~ "Norte")) %>%
+         
+      mutate(FaixaEtaria = case_when(
+        AP_NUIDADE<40~ "<=39",
+        AP_NUIDADE<50~ "40-49",
+        AP_NUIDADE<70~ "50-69",
+        TRUE~ ">=70"))  %>%
+  
+    select(
+       Regiao
+      ,AnoAtendimento
+      ,AnoMesAtendimento
+      ,Estadio
+      ,FaixaEtaria
+    )
+  
+  return(dataframeCsvAq)
+  
+}
+
+diretorioAq <- "~/datasus.gov.br/SIASUS/AQ-LaudosDiversos/CSVs202103"
+arquivosAq <- list.files(diretorioAq, pattern="*.csv" ,full.names = T)
+
+#Chama a funcao selectMamo para cada arquivo da lista
+aq_df_selecao <- 
+  do.call(rbind,
+          lapply(arquivosAq, carregaArquivoAq)
+  )
+```
+
+## Agrupamento das variáveis e contagem de linhas:
+
+-Regiao
+-AnoMesAtendimento
+-AnoAtendimento
+-Estadio
+-FaixaEtaria
+
+```{r AgrupamentoAQs}
+aq_df_agrupado_com_estadio <- group_by(aq_df_selecao,Regiao,AnoAtendimento,Estadio,FaixaEtaria) %>% count() %>%
+    select(
+      Regiao,AnoAtendimento,Estadio,FaixaEtaria,Qtd="n"
+    )
+
+aq_df_agrupado_sem_estadio <- group_by(aq_df_selecao,Regiao,AnoAtendimento,FaixaEtaria) %>% count() %>%
+    select(
+      Regiao,AnoAtendimento,FaixaEtaria,Qtd="n"
+    )
+
+#view(aq_df_agrupado_com_estadio)
+#view(pop_df)
+```
+
+## Merge de quimioterapia por Ano com População
+
+```{r}
+aq_df_pop_com_estadio <- merge(aq_df_agrupado_com_estadio, pop_df,
+                   by.x = c("Regiao","FaixaEtaria","AnoAtendimento"),
+                   by.y = c("Regiao","FaixaEtaria","Ano"))
+
+aq_df_pop_sem_estadio <- merge(aq_df_agrupado_sem_estadio, pop_df,
+                   by.x = c("Regiao","FaixaEtaria","AnoAtendimento"),
+                   by.y = c("Regiao","FaixaEtaria","Ano"))
+```
+
+
+
+#Correção da quantidade de quimioterapia pela população de mulheres do SUS total (sem faixa etaria).
+```{r}
+aq_df_pop_norm <- aq_df_pop_sem_estadio %>% group_by(Regiao) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(PopNormPercent = round((Qtd/(PopulacaoSUS/100)), 2)) %>%
+  select(Regiao, Qtd, PopulacaoSUS, PopNorm, PopNormPercent)
+```
+#Correção da quantidade de quimioterapia pela população de mulheres do SUS por faixa etaria.
+```{r}
+aq_df_pop_norm_com_faixa_etaria <- aq_df_pop_sem_estadio %>% group_by(Regiao,FaixaEtaria) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  select(Regiao,FaixaEtaria, PopNorm)
+```
+#Correção da quantidade de quimioterapia pela população de mulheres do SUS Com Filtro (FaixaEtaria e AnoAtendimento)
+```{r}
+aq_df_pop_com_estadio_norm_com_faixa_etaria_50_69 <- aq_df_pop_com_estadio %>% group_by(Regiao,Estadio) %>%
+  filter(
+      (AnoAtendimento >=2015 & AnoAtendimento <=2019)
+      & FaixaEtaria=="50-69"
+  ) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  select(Regiao,Estadio, PopNorm)
+```
+## Transformação da Faixa Etária nas AQs
+
+# Transformação da faixa etária para colunas incluindo percentuais nas AQs
+
+```{r TransformaFaixaEtariaColunaAQs}
+aq_df_faixa_etaria_como_coluna <- aq_df_pop_norm_com_faixa_etaria %>%
+  pivot_wider(names_from = FaixaEtaria, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  #adorn_totals("col") %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+
+## Analisar a proporção faixa etária no estadiamento clínico (0, 1, 2, 3 e 4) para o período de 2010 e 2019
+
+```{r FaixaEtariaEstadiamentoAQs}
+aq_ft_faixa_etaria_como_coluna <-
+  flextable(aq_df_faixa_etaria_como_coluna) %>%
+  set_caption(caption = "Análise da faixa etária no tratamento de quimioterapia em mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2010 e 2019")
+ 
+aq_ft_faixa_etaria_como_coluna <-
+  add_header_row(x = aq_ft_faixa_etaria_como_coluna, values = c("Regiao", "Tratamento de Quimioterapia/1.000.000 mulheres"), colwidths = c(1, 4)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+aq_ft_faixa_etaria_como_coluna <-
+  theme_booktabs(aq_ft_faixa_etaria_como_coluna) %>%
+  bold(j = "50-69", bold = TRUE)  %>%
+  align(j = 2:5, part = "header", align = "center")  %>% 
+  align(j = 2:5, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+aq_ft_faixa_etaria_como_coluna 
+
+save_as_docx("AQs Faixa Etária" = aq_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/aq_faixaetaria.docx")
+img <- save_as_image(aq_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/aq_faixaetaria.png")
+```
+
+## Transformação do Estadio nas AQs
+
+# Transformação do estadio para colunas incluindo percentuais nas AQs de 2015 a 2019 para faixa etária 50-69
+
+```{r TransformaFaixaEtariaColunaAQs_2015_2019}
+aq_df_estadio_como_coluna <- aq_df_pop_com_estadio_norm_com_faixa_etaria_50_69 %>%
+  pivot_wider(names_from = Estadio, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  #adorn_totals("col") %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+
+## Analisar no período de 2015 a 2019 a proporção de pacientes com câncer de mama em estádio avançado (3 e 4)
+
+```{r EstadioAvancadoAQs}
+aq_ft_estadio_como_coluna <-
+  flextable(aq_df_estadio_como_coluna) %>%
+  set_caption(caption = "Casos de câncer de mama tratados com quimioterapia em estádio avançado em mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2015 e 2019")
+ 
+aq_ft_estadio_como_coluna <-
+  add_header_row(x = aq_ft_estadio_como_coluna, values = c("Regiao", "Estadiamento do câncer de Mama/1.000.000 mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+aq_ft_estadio_como_coluna <-
+  theme_booktabs(aq_ft_estadio_como_coluna) %>%
+  bold(j = c("2", "3"), bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+aq_ft_estadio_como_coluna 
+
+save_as_docx("ARs Estadio Avançado" = aq_ft_estadio_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/aq_estadio.docx")
+img <- save_as_image(aq_ft_estadio_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/aq_estadio.png")
+```
+## Carregar os dados da base ARs em CSVs202103 
+
+Como os arquivos CSVs tem colunas diferentes, é utilizado uma função que lê cada arquivo do diretório efetuando o filtro e selecionando apenas as variáveis que serão utilizadas
+
+## Filtro e tratamentos
+
+#Filtros aplicados nas variáveis:
+
+- Período de competência da APAC entre 2010 e 2019; 
+- Idade entre 19 e 99 anos;
+- Sexo feminino;
+- CIDs do câncer de mama (C500, C501, C502, C503, C504, C505, C506, C508 e C509)
+- Tipos de APAC: 1 e 3
+- Estadiamentos clínicos (0, 1, 2, 3 e 4)
+
+# Tratamentos aplicado com a criação de colunas:
+
+- Transforma mês e ano de atendimento em data
+- Região com os respectivos Estados;
+- Idade por faixa etária.
+
+# seleção e identificação
+
+- Região
+- AnoMesAtendimento
+- Estadio
+- FaixaEtaria
+
+Os dados com filtros aplicados, tratados e selecionados foram carregados num dataframe
+
+```{r CarregarCSVs202103ARs}
+
+carregaArquivoAr = function(arquivoCsvAr){
+  
+  #Para cada arquivo, le o CSV
+  dataframeCsvAr <- read.csv(arquivoCsvAr, header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1") %>%
+    
+    filter(
+      (AP_CMP > 200912 & AP_CMP < 202001) #Entre 2010 e 2019
+      & (AP_NUIDADE > 19 & AP_NUIDADE < 100) #Entre 20 e 99 anos
+      & (AP_SEXO=="F")  #Apenas com info de sexo feminino
+      & (AP_CIDPRI %in% c("C500","C501","C502","C503","C504","C505","C506","C508","C509"))
+      & (AP_TPAPAC=="1" | AP_TPAPAC=="3") #Apenas tipo apac 1 e 3
+      & (AR_ESTADI==0|AR_ESTADI==1|AR_ESTADI==2|AR_ESTADI==3|AR_ESTADI==4)
+    ) %>%
+    
+    mutate(AnoAtendimento = as.integer(AP_CMP/100)) %>%
+
+    mutate(AnoMesAtendimento = as.Date(paste0(as.integer(AP_CMP/100), "-", as.integer(AP_CMP%%100), "-01"), format="%Y-%m-%d")) %>%
+    
+    mutate(Estadio = as.character(AR_ESTADI)) %>%
+    
+    mutate(Regiao=
+             case_when(
+              ESTADO=="PR"~ "Sul",
+              ESTADO=="RS"~ "Sul",
+              ESTADO=="SC"~ "Sul",
+              ESTADO=="ES"~ "Sudeste",
+              ESTADO=="MG"~ "Sudeste",
+              ESTADO=="RJ"~ "Sudeste",
+              ESTADO=="SP"~ "Sudeste",
+              ESTADO=="DF"~ "Centro-oeste",
+              ESTADO=="GO"~ "Centro-oeste",
+              ESTADO=="MS"~ "Centro-oeste",
+              ESTADO=="MT"~ "Centro-oeste",
+              ESTADO=="AL"~ "Nordeste",
+              ESTADO=="BA"~ "Nordeste",
+              ESTADO=="CE"~ "Nordeste",
+              ESTADO=="MA"~ "Nordeste",
+              ESTADO=="PB"~ "Nordeste",
+              ESTADO=="PE"~ "Nordeste",
+              ESTADO=="PI"~ "Nordeste",
+              ESTADO=="RN"~ "Nordeste",
+              ESTADO=="SE"~ "Nordeste",
+              ESTADO=="AC"~ "Norte",
+              ESTADO=="AM"~ "Norte",
+              ESTADO=="AP"~ "Norte",
+              ESTADO=="PA"~ "Norte",
+              ESTADO=="RO"~ "Norte",
+              ESTADO=="RR"~ "Norte",
+              ESTADO=="TO"~ "Norte")) %>%
+         
+      mutate(FaixaEtaria = case_when(
+        AP_NUIDADE<40~ "<=39",
+        AP_NUIDADE<50~ "40-49",
+        AP_NUIDADE<70~ "50-69",
+        TRUE~ ">=70"))  %>%
+  
+    select(
+       Regiao
+      ,AnoAtendimento
+      ,AnoMesAtendimento
+      ,Estadio
+      ,FaixaEtaria
+    )
+  
+  return(dataframeCsvAr)
+  
+}
+
+diretorioAr <- "~/datasus.gov.br/SIASUS/AR-LaudosDiversos/CSVs202103"
+arquivosAr <- list.files(diretorioAr, pattern="*.csv" ,full.names = T)
+
+#Chama a funcao selectMamo para cada arquivo da lista
+ar_df_selecao <- 
+  do.call(rbind,
+          lapply(arquivosAr, carregaArquivoAr)
+  )
+```
+
+## Agrupamento das variáveis e contagem de linhas:
+
+-Regiao
+-AnoAtendimento
+-AnoMesAtendimento
+-Estadio
+-FaixaEtaria
+
+```{r AgrupamentoARs}
+ar_df_agrupado_com_estadio <- group_by(ar_df_selecao,Regiao,AnoAtendimento,Estadio,FaixaEtaria) %>% count() %>%
+    select(
+      Regiao,AnoAtendimento,Estadio,FaixaEtaria,Qtd="n"
+    )
+
+ar_df_agrupado_sem_estadio <- group_by(ar_df_selecao,Regiao,AnoAtendimento,FaixaEtaria) %>% count() %>%
+    select(
+      Regiao,AnoAtendimento,FaixaEtaria,Qtd="n"
+    )
+```
+
+## Merge de radioterapia por Ano com População
+
+```{r}
+ar_df_pop_com_estadio <- merge(ar_df_agrupado_com_estadio, pop_df,
+                               by.x = c("Regiao","FaixaEtaria","AnoAtendimento"),
+                               by.y = c("Regiao","FaixaEtaria","Ano"))
+
+ar_df_pop_sem_estadio <- merge(ar_df_agrupado_sem_estadio, pop_df,
+                               by.x = c("Regiao","FaixaEtaria","AnoAtendimento"),
+                               by.y = c("Regiao","FaixaEtaria","Ano"))
+```
+# Correção da quantidade de radioterapia pela população de mulheres no SUS total (sem faixa etaria).
+```{r}
+ar_df_pop_norm <- ar_df_pop_sem_estadio %>% group_by(Regiao) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(PopNormPercent = round((Qtd/(PopulacaoSUS/100)), 2)) %>%
+  select(Regiao, Qtd, PopulacaoSUS, PopNorm, PopNormPercent)
+```
+# Correção da quantidade de radioterapia pela população de mulheres no SUS por faixa etaria.
+```{r}
+ar_df_pop_norm_com_faixa_etaria <- ar_df_pop_sem_estadio %>% group_by(Regiao,FaixaEtaria) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  select(Regiao,FaixaEtaria, PopNorm)
+```
+#Correção da quantidade de radioterapia pela população de mulheres do SUS Com Filtro (FaixaEtaria e AnoAtendimento)
+```{r}
+ar_df_pop_norm_com_faixa_etaria_50_69 <- ar_df_pop_com_estadio %>% group_by(Regiao,Estadio) %>%
+  filter(
+      (AnoAtendimento >=2015 & AnoAtendimento <=2019)
+      & FaixaEtaria=="50-69"
+  ) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  select(Regiao,Estadio, PopNorm)
+```
+
+## Transformação da Faixa Etária nas ARs
+
+# Transformação da faixa etária para colunas incluindo percentuais nas ARs
+
+```{r TransformaFaixaEtariaColunaARs}
+ar_df_faixa_etaria_como_coluna <- ar_df_pop_norm_com_faixa_etaria %>%
+  pivot_wider(names_from = FaixaEtaria, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  #adorn_totals("col") %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+
+## Analisar a proporção faixa etária no estadiamento clínico (0, 1, 2, 3 e 4) para o período de 2010 e 2019
+
+```{r FaixaEtariaEstadiamentoARs}
+ar_ft_faixa_etaria_como_coluna <-
+  flextable(ar_df_faixa_etaria_como_coluna) %>%
+  set_caption(caption = "Análise da faixa etária no tratamento de radioterapia em mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2010 e 2019")
+ 
+ar_ft_faixa_etaria_como_coluna <-
+  add_header_row(x = ar_ft_faixa_etaria_como_coluna, values = c("Regiao", "Tratamento de Radioterapia/1.000.000 mulheres"), colwidths = c(1, 4)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+ar_ft_faixa_etaria_como_coluna <-
+  theme_booktabs(ar_ft_faixa_etaria_como_coluna) %>%
+  bold(j = "50-69", bold = TRUE)  %>%
+  align(j = 2:5, part = "header", align = "center")  %>% 
+  align(j = 2:5, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+ar_ft_faixa_etaria_como_coluna 
+
+save_as_docx("ARs Faixa Etária" = ar_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/ar_faixaetaria.docx")
+img <- save_as_image(ar_ft_faixa_etaria_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/ar_faixaetaria.png")
+```
+
+## Transformação do Estadio nas ARs
+
+# Transformação do estadio para colunas incluindo percentuais nas ARs de 2015 a 2019 para faixa etária 50-69
+
+```{r TransformaFaixaEtariaColunaARs_2015_2019}
+ar_df_estadio_como_coluna <- ar_df_pop_norm_com_faixa_etaria_50_69 %>%
+  pivot_wider(names_from = Estadio, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  #adorn_totals("col") %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+
+## Analisar no período de 2015 a 2019 a proporção de pacientes com câncer de mama em estádio avançado (3 e 4)
+
+```{r EstadioAvancadoARs}
+ar_ft_estadio_como_coluna <-
+  flextable(ar_df_estadio_como_coluna) %>%
+  set_caption(caption = "Casos de câncer de mama tratados com radioterapia em estádio avançado em mulheres no SUS") %>%
+  add_footer_lines("¹ Período entre 2015 e 2019")
+ 
+ar_ft_estadio_como_coluna <-
+  add_header_row(x = ar_ft_estadio_como_coluna, values = c("Regiao", "Estadiamento do câncer de Mama/1.000.000 mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Regiao"), part = "header")
+
+ar_ft_estadio_como_coluna <-
+  theme_booktabs(ar_ft_estadio_como_coluna) %>%
+  bold(j = c("2", "3"), bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Regiao"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+ar_ft_estadio_como_coluna 
+
+save_as_docx("ARs Estadio Avançado" = ar_ft_estadio_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/ar_estadio.docx")
+img <- save_as_image(ar_ft_estadio_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/ar_estadio.png")
+```
+
+# População de mulheres no SUS por ano sem a faixa etária
+```{r}
+#pop_df <- read_csv("CSV/PopulacoaFeminina2010a2019.csv")
+pop_df_ano <- group_by(pop_df, Regiao,Ano) %>% summarise(PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')
+```
+
+# Equipamentos Mamografos
+```{r CarregarCSVs200208EQs}
+
+carregaArquivoEq = function(arquivoCsvEq){
+  
+  #Para cada arquivo, le o CSV
+  dataframeCsvEq <- read.csv(arquivoCsvEq, header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1") %>%
+    
+    filter(
+      CODEQUIP %in% c(2,3,17)# filtro para mamógrafo 
+      & COMPETEN > 200912 & COMPETEN < 202001 # Entre 2010 e 2019
+      & QT_USO > 0
+    ) %>%
+    
+    mutate(AnoAtendimento = as.integer(COMPETEN/100)) %>%
+    
+    mutate(Equipamento = as.character(CODEQUIP)) %>%
+    
+   mutate(Regiao=
+            case_when(
+             ESTADO=="PR"~ "Sul",
+             ESTADO=="RS"~ "Sul",
+             ESTADO=="SC"~ "Sul",
+             ESTADO=="ES"~ "Sudeste",
+             ESTADO=="MG"~ "Sudeste",
+             ESTADO=="RJ"~ "Sudeste",
+             ESTADO=="SP"~ "Sudeste",
+             ESTADO=="DF"~ "Centro-oeste",
+             ESTADO=="GO"~ "Centro-oeste",
+             ESTADO=="MS"~ "Centro-oeste",
+             ESTADO=="MT"~ "Centro-oeste",
+             ESTADO=="AL"~ "Nordeste",
+             ESTADO=="BA"~ "Nordeste",
+             ESTADO=="CE"~ "Nordeste",
+             ESTADO=="MA"~ "Nordeste",
+             ESTADO=="PB"~ "Nordeste",
+             ESTADO=="PE"~ "Nordeste",
+             ESTADO=="PI"~ "Nordeste",
+             ESTADO=="RN"~ "Nordeste",
+             ESTADO=="SE"~ "Nordeste",
+             ESTADO=="AC"~ "Norte",
+             ESTADO=="AM"~ "Norte",
+             ESTADO=="AP"~ "Norte",
+             ESTADO=="PA"~ "Norte",
+             ESTADO=="RO"~ "Norte",
+             ESTADO=="RR"~ "Norte",
+             ESTADO=="TO"~ "Norte")) %>%
+   
+   mutate(Equipamento=
+            case_when(
+              CODEQUIP==2~ "Mamografo comando simples",
+              CODEQUIP==3~ "Mamografo estereotaxia",
+              CODEQUIP==17~ "Mamografo computadorizado")) %>%
+        
+   
+   select(
+      Regiao
+     ,AnoAtendimento
+     ,Equipamento
+     ,Qtd=QT_USO
+   )
+  
+  return(dataframeCsvEq)
+  
+}
+
+diretorioEq <- "~/datasus.gov.br/CNES/ftp_200508/dissemin/publicos/CNES/200508_/Dados/EQ/CSVs"
+arquivosEq <- list.files(diretorioEq, pattern="*.csv" ,full.names = T)
+
+#Chama a funcao selectMamo para cada arquivo da lista
+eq_df_selecao <- 
+  do.call(rbind,
+          lapply(arquivosEq, carregaArquivoEq)
+  )
+```
+## Agrupamento das variáveis e contagem de linhas:
+
+-Regiao
+-AnoAtendimento
+-Equipamento
+-Qtd(QT_USO)
+
+```{r AgrupamentoEQs}
+eq_df_agrupado <- group_by(eq_df_selecao,Regiao,AnoAtendimento) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+eq_df_agrupadoMS <- filter(eq_df_selecao, Equipamento=="Mamografo comando simples") %>% group_by(Regiao,AnoAtendimento) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+eq_df_agrupadoME <- filter(eq_df_selecao, Equipamento=="Mamografo estereotaxia") %>% group_by(Regiao,AnoAtendimento) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+eq_df_agrupadoMC <- filter(eq_df_selecao, Equipamento=="Mamografo computadorizado") %>% group_by(Regiao,AnoAtendimento) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+```
+
+# Merge de equipamentos por Ano com População
+##Correção da quantidade de equipamentos pela população de mulheres no SUS
+```{r MergeEQs}
+eq_df_pop <- merge(eq_df_agrupado, pop_df_ano, by.x = c("Regiao","AnoAtendimento"), by.y = c("Regiao","Ano")) %>%  
+  group_by(Regiao) %>%
+  summarise(Qtd=sum(Qtd), PopulacaoSUS=sum(PopulacaoSUS), .groups = 'drop')  %>%
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(PopNormPercent = round((Qtd/(PopulacaoSUS/100)), 2)) %>%
+  select(Regiao, Qtd, PopulacaoSUS, PopNorm, PopNormPercent)
+  
+eq_df_pop_por_ano <- merge(eq_df_agrupado, pop_df_ano, by.x = c("Regiao","AnoAtendimento"), by.y = c("Regiao","Ano")) %>%  
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(Ano=as.character(AnoAtendimento)) %>%
+  select(Regiao,Ano,PopNorm)
+
+eq_df_pop_por_anoMS <- merge(eq_df_agrupadoMS, pop_df_ano, by.x = c("Regiao","AnoAtendimento"), by.y = c("Regiao","Ano")) %>%  
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(Ano=as.character(AnoAtendimento)) %>%
+  select(Regiao,Ano,PopNorm)
+
+eq_df_pop_por_anoME <- merge(eq_df_agrupadoME, pop_df_ano, by.x = c("Regiao","AnoAtendimento"), by.y = c("Regiao","Ano")) %>%  
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(Ano=as.character(AnoAtendimento)) %>%
+  select(Regiao,Ano,PopNorm)
+
+eq_df_pop_por_anoMC <- merge(eq_df_agrupadoMC, pop_df_ano, by.x = c("Regiao","AnoAtendimento"), by.y = c("Regiao","Ano")) %>%  
+  mutate(PopNorm = round((Qtd/(PopulacaoSUS))*1000000, 2)) %>%
+  mutate(Ano=as.character(AnoAtendimento)) %>%
+  select(Regiao,Ano,PopNorm)
+```
+
+# Transformação da Região nas EQs
+
+## Transformação da região para colunas incluindo percentuais nas EQs por ano
+
+```{r TransformaRegiaoEQs}
+eq_df_região_como_coluna <- eq_df_pop_por_ano %>%
+  pivot_wider(names_from = Regiao, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+  
+eq_df_região_como_colunaMS <- eq_df_pop_por_anoMS %>%
+  pivot_wider(names_from = Regiao, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+  
+eq_df_região_como_colunaME <- eq_df_pop_por_anoME %>%
+  pivot_wider(names_from = Regiao, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+  
+eq_df_região_como_colunaMC <- eq_df_pop_por_anoMC %>%
+  pivot_wider(names_from = Regiao, values_from = PopNorm,values_fn = sum)  %>%
+  mutate(across(where(is.numeric), ~ formattable::comma(., digits = 2, decimal.mark = ",", big.mark = "."))) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+  
+```
+
+## Analisar a distribuição dos equipamentos de mamografia pela população de mulheres em cada região para o período de 2010 e 2019
+
+```{r RegiãoEquipamentosEQs}
+eq_ft_região_como_coluna <-
+  flextable(eq_df_região_como_coluna)
+  
+eq_ft_região_como_coluna <-
+  add_header_row(x = eq_ft_região_como_coluna, values = c("Ano", "Distribuição dos Mamógrafos/1.000.000 Mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Ano"), part = "header")
+
+eq_ft_região_como_coluna <-
+  theme_booktabs(eq_ft_região_como_coluna) %>%
+  #bold(j = "Sul", bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Ano"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+eq_ft_região_como_coluna 
+
+save_as_docx("EQs Região" = eq_ft_região_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiao.docx")
+img <- save_as_image(eq_ft_região_como_coluna, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiao.png")
+```
+
+```{r RegiãoEquipamentosEQs MS}
+eq_ft_região_como_colunaMS <-
+  flextable(eq_df_região_como_colunaMS)
+  
+eq_ft_região_como_colunaMS <-
+  add_header_row(x = eq_ft_região_como_colunaMS, values = c("Ano", "Mamógrafos comando Simples/1.000.000 Mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Ano"), part = "header")
+
+eq_ft_região_como_colunaMS <-
+  theme_booktabs(eq_ft_região_como_colunaMS) %>%
+  #bold(j = "Sul", bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Ano"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+eq_ft_região_como_colunaMS 
+
+save_as_docx("EQs Região" = eq_ft_região_como_colunaMS, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoMS.docx")
+img <- save_as_image(eq_ft_região_como_colunaMS, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoMS.png")
+```
+
+```{r RegiãoEquipamentosEQs ME}
+eq_ft_região_como_colunaME <-
+  flextable(eq_df_região_como_colunaME)
+  
+eq_ft_região_como_colunaME <-
+  add_header_row(x = eq_ft_região_como_colunaME, values = c("Ano", "Mamógrafos Estereotaxia/1.000.000 Mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Ano"), part = "header")
+
+eq_ft_região_como_colunaME <-
+  theme_booktabs(eq_ft_região_como_colunaME) %>%
+  #bold(j = "Sul", bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Ano"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+eq_ft_região_como_colunaME 
+
+save_as_docx("EQs Região" = eq_ft_região_como_colunaME, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoME.docx")
+img <- save_as_image(eq_ft_região_como_colunaME, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoME.png")
+```
+
+```{r RegiãoEquipamentosEQs MC}
+eq_ft_região_como_colunaMC <-
+  flextable(eq_df_região_como_colunaMC)
+  
+eq_ft_região_como_colunaMC <-
+  add_header_row(x = eq_ft_região_como_colunaMC, values = c("Ano", "Mamógrafos Computadorizado/1.000.000 Mulheres"), colwidths = c(1, 5)) %>%
+  merge_h(part = "header") %>%
+  merge_v(j = c("Ano"), part = "header")
+
+eq_ft_região_como_colunaMC <-
+  theme_booktabs(eq_ft_região_como_colunaMC) %>%
+  #bold(j = "Sul", bold = TRUE)  %>%
+  align(j = 2:6, part = "header", align = "center")  %>% 
+  align(j = 2:6, part = "body", align = "right")  %>% 
+  vline(j = c("Ano"), border = fp_border(), part = "all") %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fix_border_issues()
+
+eq_ft_região_como_colunaMC 
+
+save_as_docx("EQs Região" = eq_ft_região_como_colunaMC, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoMC.docx")
+img <- save_as_image(eq_ft_região_como_colunaMC, path = "~/SIA_SUS/SIA_SUS/Tabelas/eq_regiaoMC.png")
+```
+
+
+```{r Dados para Gráficos de Barras}
+
+#Campos para Grafico = Regiao, Metrica, QuantidadeTotal
+
+#Exames | Origem = pa_df_pop_norm
+pa_df_grafico <- pa_df_pop_norm
+names(pa_df_grafico)[names(pa_df_grafico) == "Procedimento"] <- "Metrica"
+#mutate(Metrica="Exames")
+
+#Quimioterapia | Origem = aq_df_pop_com_estadio_norm
+aq_df_grafico <- aq_df_pop_norm %>% mutate(Metrica="Quimioterapia")
+
+#Radioterapia | Origem = ar_df_pop_com_estadio_norm
+ar_df_grafico <- ar_df_pop_norm %>% mutate(Metrica="Radioterapia")
+
+#Equipamentos | Origem = eq_df_pop
+eq_df_grafico <- eq_df_pop %>% mutate(Metrica="Mamografos")
+
+
+df_grafico <- pa_df_grafico %>% union(aq_df_grafico) %>% union(ar_df_grafico) %>% union(eq_df_grafico)
+view(df_grafico)
+
+```
+
+```{r Gráficos de Barras}
+grafico_barras_por_metrica <- ggplot(df_grafico, aes(x=Metrica, y=PopNormPercent, color=Regiao, fill=Regiao)) +
+  geom_bar(stat="identity", position=position_dodge()) + 
+  #Texto do Total no gráfico
+  geom_text(aes(label=PopNormPercent), vjust=0.6, hjust=-0.1, color="black", position = position_dodge(0.9), size=3.5, angle=90) +
+  #Posição da Legenda
+  theme(legend.position="top") +
+  ylim(0,12) +
+  labs(x = "Região", y = "%")
+  
+grafico_barras_por_metrica
+
+dev.print(file="~/SIA_SUS/SIA_SUS/Tabelas/grafico_barras_por_metrica.png", device=png, width=550)
+
+
+grafico_barras_por_regiao <- ggplot(df_grafico, aes(x=Regiao, y=PopNormPercent, color=Metrica, fill=Metrica)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  #Texto do Total no gráfico
+  geom_text(aes(label=PopNormPercent), vjust=0.6, hjust=-0.1, color="black", position = position_dodge(0.9), size=3.5, angle=90) +
+  #Posição da Legenda
+  theme(legend.position="top") +
+  ylim(0,12) +
+  labs(x = "Região", y = "%")
+  
+grafico_barras_por_regiao
+
+dev.print(file="~/SIA_SUS/SIA_SUS/Tabelas/grafico_barras_por_regiao.png", device=png, width=550)
+
+
+#SEM RASTREAMENTO
+grafico_barras_por_metrica_sem_rastreamento <- filter(df_grafico, Metrica != "Rastreamento") %>%
+  ggplot(aes(x=Metrica, y=PopNormPercent, color=Regiao, fill=Regiao)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  #Texto do Total no gráfico
+  geom_text(aes(label=PopNormPercent), vjust=0.6, hjust=-0.1, color="black", position = position_dodge(0.9), size=3.5, angle=90) +
+  #Posição da Legenda
+  theme(legend.position="top") +
+  ylim(0,2)
+  
+grafico_barras_por_metrica_sem_rastreamento
+
+
+grafico_barras_por_regiao_sem_rastreamento <- filter(df_grafico, Metrica != "Rastreamento") %>%
+  ggplot(aes(x=Regiao, y=PopNormPercent, color=Metrica, fill=Metrica)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  #Texto do Total no gráfico
+  geom_text(aes(label=PopNormPercent), vjust=0.6, hjust=-0.1, color="black", position = position_dodge(0.9), size=3.5, angle=90) +
+  #Posição da Legenda
+  theme(legend.position="top") +
+  ylim(0,2)
+  
+grafico_barras_por_regiao_sem_rastreamento
+
+#ggsave(filename = "~/SIA_SUS/SIA_SUS/Tabelas/grafico_barras_por_regiao_sem_rastreamento.png", plot = graficoB, dpi=300)
+#dev.print(file="~/SIA_SUS/SIA_SUS/Tabelas/grafico_barras_por_regiao_sem_rastreamento.png", device=png, width=550)
+```
+
+
+
+
+
+
+
+
+
+
+

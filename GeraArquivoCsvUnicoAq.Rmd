@@ -1,0 +1,97 @@
+```{r}
+library(data.table)
+library(tidyverse) # ou só o dplyr e o readr
+```
+
+```{r}
+#Cria função para ler cada arquivo
+selectCsv = function(fileCsv){
+  
+  print(fileCsv)
+  print("Lendo Arquivo")
+  
+  #Para cada arquivo recebido, le o CSV
+  dataframeCsv <- read.csv(fileCsv, header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1")
+  
+  
+  dataframeRegiao = data.frame(ESTADO=c("PR","RS","SC","ES","MG","RJ","SP","DF","GO","MS","MT","AL","BA","CE","MA","PB","PE","PI","RN","SE","AC","AM","AP","PA","RO","RR","TO"),REGIAO=c("Sul","Sul","Sul","Sudeste","Sudeste","Sudeste","Sudeste","Centro-oeste","Centro-oeste","Centro-oeste","Centro-oeste","Nordeste","Nordeste","Nordeste","Nordeste","Nordeste","Nordeste","Nordeste","Nordeste","Nordeste","Norte","Norte","Norte","Norte","Norte","Norte","Norte"))
+  
+  print("Filtrando")
+  #Atualiza data frame realizando filtro e select apenas do que será utilizado
+  dataframeCsv <-
+    filter(dataframeCsv,
+           (AP_CIDPRI=="C500"
+           |AP_CIDPRI=="C501"
+           |AP_CIDPRI=="C502"
+           |AP_CIDPRI=="C503"
+           |AP_CIDPRI=="C504"
+           |AP_CIDPRI=="C505"
+           |AP_CIDPRI=="C506"
+           |AP_CIDPRI=="C508"
+           |AP_CIDPRI=="C509")
+           & (AP_CMP > 200912 & AP_CMP < 202101) #Entre 2010 e 2020
+           & (AP_NUIDADE > 18 & AP_NUIDADE < 100) #Entre 18 e 100 anos
+           & (AP_SEXO=="F"|AP_SEXO=="M") #Apenas com info de sexo
+           & (AP_TPAPAC=="1" | AP_TPAPAC=="3") #Apenas tipo apac 1 e 3
+           & (AQ_ESTADI==0|AQ_ESTADI==1|AQ_ESTADI==2|AQ_ESTADI==3|AQ_ESTADI==4) #Apenas Estadio preenchido com 0,1,2,3 e 4
+    ) %>% inner_join(dataframeRegiao,by="ESTADO") %>%
+    select(
+      Estado="ESTADO"
+      ,Regiao="REGIAO"
+      ,AnoMesAtendimento="AP_CMP"
+      ,Estadio="AQ_ESTADI"
+      #,TipoApac="AP_TPAPAC"
+      ,Sexo="AP_SEXO"
+      #,ProcedimentoPrincipal="AP_PRIPAL"
+      ,Idade="AP_NUIDADE"
+    )
+  
+  #Ajusta campo de ano e mês
+  tryCatch({
+    dataframeCsv$AnoMesAtendimento[which(dataframeCsv$AnoMesAtendimento>0)] <-
+      paste0(substr(dataframeCsv$AnoMesAtendimento,1,4), "-", substr(dataframeCsv$AnoMesAtendimento,5,6), "-01")
+  })
+  
+  print("Escrevendo CSV")
+  write.table(dataframeCsv, arquivoCsvComTudo,
+              append = TRUE,
+              sep = ",",
+              col.names = !file.exists(arquivoCsvComTudo),
+              row.names = FALSE,
+              quote = FALSE)
+  
+  dataframeCsvAgrupado <- group_by(dataframeCsv,Estado,Regiao,AnoMesAtendimento,Estadio,Sexo,Idade) %>% count() %>%
+    select(
+      Estado,Regiao,AnoMesAtendimento,Estadio,Sexo,Idade,Qtd="n"
+    )
+  
+  print("Escrevendo CSV Agrupado")
+  write.table(dataframeCsvAgrupado, arquivoCsvComTudoAgrupado,
+              append = TRUE,
+              sep = ",",
+              col.names = !file.exists(arquivoCsvComTudoAgrupado),
+              row.names = FALSE,
+              quote = FALSE)
+}
+
+#Diretorio onde esta todos os CSVs separados
+diretorioCsvs <- "~/datasus.gov.br/SIASUS/AQ-LaudosDiversos/CSVs202103"
+arquivoCsvComTudo <- "~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios.csv"
+arquivoCsvComTudoAgrupado <- "~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios_Agrupado.csv"
+
+#Delete Arquivo caso já exista
+if (file.exists(arquivoCsvComTudo)) {
+  file.remove(arquivoCsvComTudo)
+}
+if (file.exists(arquivoCsvComTudoAgrupado)) {
+  file.remove(arquivoCsvComTudoAgrupado)
+}
+
+
+#Recupera lista dos arquivos CSV no Diretorio
+csv.list<- list.files(diretorioCsvs,full.names = T)
+
+#Chama a funcao selectMamo para cada arquivo da lista
+lapply(csv.list, selectCsv)
+```
+

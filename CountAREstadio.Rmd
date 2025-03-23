@@ -1,0 +1,305 @@
+---
+title: "CountAREstadio"
+author: "Cintia Mesquita"
+date: "12/02/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(foreign)
+library(data.table)
+library(highcharter)
+library(DT)
+library(janitor)
+library(knitr)
+library(descr)
+library(pander)
+library(plotly)
+```
+
+#leitura dos CSVs Radioterapia 
+
+```{r}
+ar_tudo <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AR_Estadios.csv")
+```
+
+Data de atendimento ao paciente; e tipo de APAC.
+```{r}
+estadio_brasil <- ar_tudo %>% group_by(AnoMesAtendimento,Regiao,Estadio)
+
+estadio_sul <- estadio_brasil %>% filter(Regiao=="Sul")
+estadio_sudeste <- estadio_brasil %>% filter(Regiao=="Sudeste")
+estadio_centro_oeste <- estadio_brasil %>% filter(Regiao=="Centro-oeste")
+estadio_nordeste <- estadio_brasil %>% filter(Regiao=="Nordeste")
+estadio_norte <- estadio_brasil %>% filter(Regiao=="Norte")
+
+```
+
+# Estadiamento por Região nas ARs
+
+Tabela - Radioterapia Região Sul
+```{r}
+tabyl(estadio_sul,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia da Região Sul")
+```
+
+Gráfico - Radioterapia Região Sul
+```{r}
+estadio_sul %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  #ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), col=Estadio, label=Estadio)) +
+  geom_line() + geom_point() + 
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  
+  labs(title = "Radioterapia Região Sul", color = "Proced") -> g
+ggplotly(g)
+
+```
+Tabela - Radioterapia Região Sudeste
+```{r}
+tabyl(estadio_sudeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia Região Sudeste")
+```
+
+Gráfico - Radioterapia Região Sudeste
+```{r}
+estadio_sudeste %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Radioterapia Região Sudeste", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+Tabela - Radioterapia Região Centro-oeste
+```{r}
+tabyl(estadio_centro_oeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia Região Centro-oeste")
+```
+
+Gráfico - Radioterapia Região Centro-oeste
+```{r}
+estadio_centro_oeste %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Radioterapia Região Centro-oeste", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+Tabela - Radioterapia Região Nordeste
+```{r}
+tabyl(estadio_nordeste,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia Região Nordeste")
+```
+Gráfico - Radioterapia Região Nordeste
+```{r}
+estadio_nordeste %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Radioterapia Região Nordeste", color = "Proced") -> g
+ggplotly(g)
+
+```
+Tabela - Radioterapia Região Norte
+```{r}
+tabyl(estadio_norte,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia Região Norte")
+```
+Gráfico - Radioterapia Região Norte
+```{r}
+estadio_norte %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Radioterapia Região Norte", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+
+#Relação estadiamento X sexo
+
+```{r}
+estadio_brasil_por_sexo <- ar_tudo %>% group_by(AnoMesAtendimento,Sexo,Estadio)
+
+estadio_F <- estadio_brasil_por_sexo %>% filter(Sexo=="F")
+estadio_M <- estadio_brasil_por_sexo %>% filter(Sexo=="M")
+
+```
+
+```{r}
+tabyl(estadio_F,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Mulheres Brasil")
+```
+
+```{r}
+estadio_F %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Mulheres Brasil", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+
+```{r}
+tabyl(estadio_M,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Homens Brasil")
+```
+
+```{r}
+estadio_M %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Homens Brasil", color = "Proced") -> g
+ggplotly(g)
+
+```
+
+# Total de APACs de Radioterapia utilizadas 
+
+```{r}
+estadio_brasil <- ar_tudo %>% group_by(AnoMesAtendimento,Estadio)
+
+```
+
+```{r}
+tabyl(estadio_brasil,AnoMesAtendimento,Estadio, show_na = FALSE, show_missing_levels = FALSE) %>%
+  adorn_totals(c("row", "col")) %>%
+#adorn_title("combined")
+datatable(caption = "Radioterapia Total")
+```
+
+```{r}
+estadio_brasil %>% 
+  group_by(Estadio,AnoMesAtendimento) %>% 
+  summarise(Qtde = n(), .groups = 'drop') %>% 
+  ggplot(aes(x = as.character(AnoMesAtendimento), y = Qtde, color=factor(Estadio), fill=factor(Estadio))) +  
+  #Com Barra
+  #geom_bar(stat="identity") +
+  #Bolinhas
+  geom_point() + 
+  labs(title = "Radioterapia Total", color = "Proced") -> g
+ggplotly(g)
+
+```
+## Teste AP_CIDPRI e DATA de atendimento ao paciente
+```{r}
+ar_SC19 <- read.csv("~/datasus.gov.br/SIASUS/AR-LaudosDiversos/CSVs/ARSC_2019.csv", header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1")
+```
+
+```{r}
+ar_SC19%>% select(AP_MVM,AP_CMP)%>% count(AP_CMP,AP_MVM)%>%arrange(AP_CMP)
+```
+ 
+A (AP_CMP) é a data de atendimento ao paciente / competência (AAAAMM) ao comparar as AP_CMP com a AP_MVM no ARSC_2019.csv como modelo, no AP_CMP os meses de 10, 11, 12 registra resíduos para o ano seguinte na AP_MVM.
+
+#Descrição das APACs de Radioterapia para data:
+AP_MVM - Data de Processamento / Movimento (AAAAMM)
+AP_DTINIC -Data de INÍCIO validade
+AP_DTFIM - Data de FIM validade
+AP_DTOCOR - Data de Ocorrência que substitui a data de FIM de validade
+AP_DTSOLIC - Data da Solicitação
+AP_DTAUT - Data da Autorização
+AR_DTIDEN - Data da identificação patológica do caso (AAAAMMDD)
+AR_DTINI1 - Data de INÍCIO (AAAAMMDD) 1º tratamento anterior
+AR_DTINI2 - Data de INÍCIO (AAAAMMDD) 2º tratamento anterior
+AR_DTINI3 - Data de início (AAAAMMDD) 3º tratamento anterior
+AR_DTINTR - Data de INÍCIO do tratamento solicitado (AAAAMMDD)
+AR_INIAR1 - Data de INÍCIO 1º (AAAAMMDD) 
+AR_INIAR2 - Data de INÍCIO 2º (AAAAMMDD)
+AR_INIAR3 - Data de INÍCIO 3º (AAAAMMDD)
+AR_FIMAR1 - Data de Fim 1º (AAAAMMDD)
+AR_FIMAR2 - Data de FIM 2º (AAAAMMDD)
+AR_FIMAR3 - Data de Fim 3º (AAAAMMDD)
+
+#Validação (AP_CIDPRI)
+Validação do AP_CIDPRI para CIDs de CA de mamo comparando com o AR_CID10, AP_CIDSEC, AR_CIDTR1 e AR_CIDTR2. No AR-CID10 e no AP_CIDSEC há vários com campos brancos. Usar filtro AP_CIDPRI.
+
+#Formatos ARs
+```{r}
+ar_SC19 <- read.dbc("~/datasus.gov.br/SIASUS/AR-LaudosDiversos/ARSC1912.dbc") # formato DATASUS
+```
+```{r}
+ar_eP19 <- read.csv("~/datasus.gov.br/SIASUS/AR-LaudosDiversos/CSVs/ARSC_2019.csv", header=TRUE, stringsAsFactors=FALSE, fileEncoding="latin1") # agrupado por UF e AAAA
+```
+```{r}
+ar_tudo <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AR_Estadios.csv") # organizado por Data de Atendimento ao paciente (competência) e por região
+```
+```{r}
+ar_agrupado <- read.csv("~/SIA_SUS/SIA_SUS/CSV/AR_Estadios_Agrupado.csv") # agrupamento de observações (se for igual agrupa)
+```
+```{r}
+head(ar_SC19)
+head(ar_eP19)
+head(ar_tudo)
+head(ar_agrupado)
+```
+No formato DBC (ARufaamm.dbc) tem 74 variáveis 
+No formato CSV (ARuf_aaaa.csv) tem 77 variáveis e foram adicionados ESTADO, ANO e MES
+No formato CSV (AR_Estadios.csv) tem 6 variáveis e os estados foram atribuídos por região
+No formato CSV (AR_Estadios_Agrupado.cvs) tem 7 variáveis mais o agrupamento de observações (Estado,Regiao,AnoMesAtendimento, Estadio, Sexo, Idade) formou o Qtd
+
+#Informações de interesse <- ARs
+Estado - ok
+Regiao - ok
+AnoMesAtendimento - ok
+Estadio - ok
+Sexo - ok
+Idade - ok

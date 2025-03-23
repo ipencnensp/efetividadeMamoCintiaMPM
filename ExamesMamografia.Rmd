@@ -1,0 +1,136 @@
+---
+title: "Exames de mamografia"
+author: "Cintia Mesquita"
+date: "03/12/2020"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Bibliotecas
+```{r}
+library(sparklyr)
+library(tidyverse)
+library(foreign)
+library(data.table)
+library(highcharter)
+library(DT)
+library(janitor)
+library(knitr)
+library(descr)
+library(pander)
+library(plotly)
+
+```
+Configuração do Spark
+```{r}
+config <- spark_config()
+config$`sparklyr.cores.local` <- 16
+config$`sparklyr.shell.driver-memory` <- "64G"
+config$spark.memory.fraction <- 0.9
+config$spark.dynamicAllocation.enabled <- "true" # pode ser necessario em alguns casos
+```
+```{r}
+sc <- spark_connect(master = "local", config = config)
+```
+## Busca no data PAs em CSVs_Mamo2
+```{r}
+diretorio <- "~/datasus.gov.br/SIASUS/PA-LaudosDiversos/CSVs_Mamo2/"
+```
+```{r}
+leitura <- spark_read_csv(sc, name="PAMamos",path=diretorio)
+```
+## Use de filtros e selects -> Gera CSVs agrupado
+```{r}
+pa_df <-  tbl(sc, "pamamos")
+pa_df <- filter(pa_df,
+                (PA_CMP > 200712 & PA_CMP < 202101) #Entre 2008 e 2020
+                & (PA_IDADE > 18 & PA_IDADE < 100) #Entre 18 e 100 anos
+                & (PA_SEXO=="F"|PA_SEXO=="M") ) #Apenas com info de sexo
+pa_df <- mutate(pa_df, AnoAtendimento = as.Date(paste0(as.integer(PA_CMP/100), "-01-01")))%>%
+  mutate(AnoMesAtendimento = as.Date(paste0(as.integer(PA_CMP/100), "-", as.integer(PA_CMP%%100), "-01")))%>%
+  mutate(Procedimento=
+           case_when(
+            PA_PROC_ID==204030030~ "Diagnostico",
+            PA_PROC_ID==204030188~ "Rastreamento"
+          )
+ ) %>%
+  mutate(Regiao=
+           case_when(
+            ESTADO=="PR"~ "Sul",
+            ESTADO=="RS"~ "Sul",
+            ESTADO=="SC"~ "Sul",
+            ESTADO=="ES"~ "Sudeste",
+            ESTADO=="MG"~ "Sudeste",
+            ESTADO=="RJ"~ "Sudeste",
+            ESTADO=="SP"~ "Sudeste",
+            ESTADO=="DF"~ "Centro-oeste",
+            ESTADO=="GO"~ "Centro-oeste",
+            ESTADO=="MS"~ "Centro-oeste",
+            ESTADO=="MT"~ "Centro-oeste",
+            ESTADO=="AL"~ "Nordeste",
+            ESTADO=="BA"~ "Nordeste",
+            ESTADO=="CE"~ "Nordeste",
+            ESTADO=="MA"~ "Nordeste",
+            ESTADO=="PB"~ "Nordeste",
+            ESTADO=="PE"~ "Nordeste",
+            ESTADO=="PI"~ "Nordeste",
+            ESTADO=="RN"~ "Nordeste",
+            ESTADO=="SE"~ "Nordeste",
+            ESTADO=="AC"~ "Norte",
+            ESTADO=="AM"~ "Norte",
+            ESTADO=="AP"~ "Norte",
+            ESTADO=="PA"~ "Norte",
+            ESTADO=="RO"~ "Norte",
+            ESTADO=="RR"~ "Norte",
+            ESTADO=="TO"~ "Norte"
+          )
+ ) %>% select(AnoAtendimento, AnoMesAtendimento, Regiao, Estado=ESTADO, Procedimento, QtdApresentada=PA_QTDPRO, Sexo=PA_SEXO, Idade=PA_IDADE)
+```
+```{r}
+function_salva_CSV <- function() {
+  
+    pa_df_agrupado <- pa_df %>% 
+      group_by(Regiao,Sexo,AnoMesAtendimento,Procedimento,Idade) %>%
+      summarise(QtdApresentada = sum(QtdApresentada))
+    
+    arquivoCsv <- "~/SIA_SUS/SIA_SUS/CSV/PA_Exames_Agrupado.csv"
+
+    #Delete Arquivo caso já exista
+    if (file.exists(arquivoCsv)) {
+      file.remove(arquivoCsv)
+    }
+    
+    write.table(pa_df_agrupado, arquivoCsv,
+              append = TRUE,
+              sep = ",",
+              col.names = !file.exists(arquivoCsv),
+              row.names = FALSE,
+              quote = FALSE)
+    
+}
+function_salva_CSV()
+```
+
+```{r}
+spark_disconnect_all()
+```
+##------------------------------------------------------------------------------
+##Testes de NAs
+Informações de interesse <- PAs
+AnoAtendimento -OK
+AnoMesAtendimento - OK
+Regiao - OK
+Estado - OK
+Procedimento - OK
+QtdApresentada - OK
+Sexo - OK
+Idade - OK
+
+subs(PA_CMP,1,4) != "2020" ou PA_CMP < 202001) para excluir 2020 do ano de atendimento
+
+
+
+
+
+

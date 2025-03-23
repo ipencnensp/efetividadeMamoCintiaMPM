@@ -1,0 +1,381 @@
+---
+title: "PAexamesAQestadioARestadio"
+author: "Cintia Mesquita"
+date: "12/02/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(kableExtra)
+library(janitor)
+library(tidyverse)
+library(foreign)
+library(data.table)
+library(highcharter)
+library(DT)
+library(knitr)
+library(descr)
+library(pander)
+library(plotly)
+library(lubridate)
+library(ggpubr)
+library(ggplot2)
+library(tidyr)
+
+```
+O exame de mamografia como rastreamento foi incorporado no SUS para mulheres na faixa etária de 50 a 69 anos com periodicidade bienal em 2009. O objetivo deste trabalho é analisar dos dados do DATASUS no sistema de informação hospitalar nas APAC de PA, AQ, AR e verificar a efetividade da mamografia de rastreamento no estadiamento clínico. 
+## Exames de Mamografia
+•	Avaliar o desenvolvimento dos exames de rastreamento e diagnóstico por mês no período de 2010 a 2019;
+```{r}    
+pa_tudo <- read_csv("~/SIA_SUS/SIA_SUS/CSV/PA_Exames_Agrupado.csv",col_types = cols(AnoMesAtendimento = col_date(format = "%Y-%m-%d"))) # read file Exames
+```
+
+```{r} 
+pa_tudo %>% # Brasil
+  filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+         & Sexo=="F"
+         ) %>%
+  group_by(Procedimento,AnoMesAtendimento) %>%
+  summarise(Qtd=sum(QtdApresentada)) %>%
+  ggplot(aes(x=AnoMesAtendimento, y=Qtd/1000, group=Procedimento, color=Procedimento)) + 
+  geom_line(aes(linetype=Procedimento)) +
+  geom_point(aes(shape=Procedimento)) +
+  labs_pubr() + theme_pubr() +
+  scale_x_date(breaks = seq(as.Date("2010-10-01"), as.Date("2020-10-01"), by="12 months"), date_labels = "Out %Y") + # month/year
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  labs(x = "Mês e ano do atendimento", y = "Quantidade (mil)") # title graph, x and y
+
+dev.print(file="~/SIA_SUS/SIA_SUS/Tabelas/pa_desenvolvimento_exames.png", device=png, width=700)
+```
+```{r}
+pa_tudo %>%
+  filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+         & Sexo=="F"
+         ) %>%
+  group_by(Procedimento,AnoMesAtendimento,Regiao) %>%
+  summarise(Qtd=sum(QtdApresentada)) %>%
+  ggplot(aes(x=AnoMesAtendimento, y=Qtd/1000, group=Procedimento, color=Procedimento)) + 
+  geom_line(aes(linetype=Procedimento)) +
+  geom_point(aes(shape=Procedimento)) +
+  facet_wrap(Regiao ~., ncol = 5) +
+  labs_pubr() + theme_pubr() +
+  scale_x_date(limits = as.Date(c("2009-12-01", "2019-12-01")),
+  date_breaks = "36 month",date_labels = "%b/%y") + # month/year
+  #scale_x_date(date_breaks = "36 month", date_labels = "%b %y") +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  labs(title= "Mamografia Total",x = "Mês e ano do atendimento", y = "Quantidade (mil)") # title graph, x and y
+```
+
+•	Analisar a proporção de mamografia de rastreamento na faixa etária preconizada para o período de 2010 e 2019;
+```{r}
+pa_tudo_sexo_f <- pa_tudo %>% filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+                                     & Sexo == "F"
+                                     ) %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Procedimento,FaixaEtaria) %>% summarise(QtdApresentada=sum(QtdApresentada), .groups = 'drop')
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f %>% pivot_wider(names_from = FaixaEtaria, values_from = QtdApresentada,values_fn = sum)
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f_faixa_etaria_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+	#adorn_n_formatting(big.mark = ".") %>% 
+  adorn_ns(position = "front")
+```
+
+```{r}
+ 
+view(pa_tudo_sexo_f)
+
+view(pa_tudo_sexo_f_faixa_etaria_como_coluna)
+```
+
+```{r}
+#https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna %>%
+  kbl(
+    align = "llrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  #kable_material(c("striped", "hover")) %>% # TEMA
+  #kable_classic() %>% # TEMA
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("Total " = 2, "Faixa Etária" = 4," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("Total" = 2, "Faixa Etária" = 4)) #____SEM COLUNA TOTAL
+```
+Exames de mamografia em 2010-2019
+```{r}
+pa_tudo_sexo_f_10 <- pa_tudo %>% filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+                                     & Sexo == "F"
+                                     & Procedimento=="Diagnostico") %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Procedimento,FaixaEtaria) %>% summarise(QtdApresentada=sum(QtdApresentada), .groups = 'drop')
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f_10 %>% pivot_wider(names_from = FaixaEtaria, values_from = QtdApresentada,values_fn = sum)
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f_faixa_etaria_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+	#adorn_n_formatting(big.mark = ".") %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+pa_tudo_sexo_f_faixa_etaria_como_coluna %>%
+  kbl(
+    align = "llrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  #kable_material(c("striped", "hover")) %>% # TEMA
+  #kable_classic() %>% # TEMA
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("2010-2019" = 2, "Faixa Etária" = 4," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("2010-2014" = 2, "Faixa Etária" = 4)) #____SEM COLUNA TOTAL
+```
+Exames de mamografia em 2010-2019
+```{r}
+pa_tudo_sexo_f_15 <- pa_tudo %>% filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+                                     & Sexo == "F"
+                                     & Procedimento=="Diagnostico") %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Procedimento,FaixaEtaria) %>% summarise(QtdApresentada=sum(QtdApresentada), .groups = 'drop')
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f_15 %>% pivot_wider(names_from = FaixaEtaria, values_from = QtdApresentada,values_fn = sum)
+
+pa_tudo_sexo_f_faixa_etaria_como_coluna <- pa_tudo_sexo_f_faixa_etaria_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+pa_tudo_sexo_f_faixa_etaria_como_coluna %>%
+  kbl(
+    align = "llrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("2010-2019" = 2, "Faixa Etária" = 4," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("2015-2019" = 2, "Faixa Etária" = 4)) #____SEM COLUNA TOTAL
+```
+# AQ*
+Contagem dos estadiamentos nas APACs de AQ* - gerou um novo csv que unificou todos os arquivos. 
+```{r}
+aq_tudo <- read_csv("~/SIA_SUS/SIA_SUS/CSV/AQ_Estadios_Agrupado.csv",col_types = cols(AnoMesAtendimento = col_date(format = "%Y-%m-%d")))
+```
+•	Analisar a proporção de estadiamento clínico (0, I, II, III e IV) na faixa etária preconizada do rastreamento entre 2010 e 2019
+```{r}
+aq_tudo_sexo_f <- aq_tudo %>% filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+                                     & Sexo == "F"
+                                     ) %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Estadio,FaixaEtaria) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+aq_tudo_sexo_f_faixa_etaria_como_coluna <- aq_tudo_sexo_f %>% pivot_wider(names_from = FaixaEtaria, values_from = Qtd,values_fn = sum)
+
+aq_tudo_sexo_f_faixa_etaria_como_coluna[, 2:2] <- sapply(aq_tudo_sexo_f_faixa_etaria_como_coluna[, 2:2], as.character)
+
+aq_tudo_sexo_f_faixa_etaria_como_coluna <- aq_tudo_sexo_f_faixa_etaria_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+aq_tudo_sexo_f_faixa_etaria_como_coluna %>%
+  kbl(
+    align = "llrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("AQ Total" = 2, "Faixa Etária" = 4," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("AQ Total" = 2, "Faixa Etária" = 4)) #____SEM COLUNA TOTAL
+```
+```{r}
+aq_tudo_sexo_f <- aq_tudo %>% filter(year(AnoMesAtendimento) >=2015 & year(AnoMesAtendimento) <=2019 # 2015 a 2019
+                                     & Sexo == "F"
+                                     ) %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Estadio,FaixaEtaria) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+aq_tudo_sexo_f_estadio_como_coluna <- filter(aq_tudo_sexo_f, FaixaEtaria=="50-69") %>% pivot_wider(names_from = Estadio, values_from = Qtd,values_fn = sum)
+
+aq_tudo_sexo_f_estadio_como_coluna[, 2:2] <- sapply(aq_tudo_sexo_f_estadio_como_coluna[, 2:2], as.character)
+
+aq_tudo_sexo_f_estadio_como_coluna <- aq_tudo_sexo_f_estadio_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+aq_tudo_sexo_f_estadio_como_coluna %>%
+  kbl(
+    align = "llrrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("AQ (2015-2019)" = 2, "Estadio" = 5," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("Total" = 2, "Estadio" = 5)) #____SEM COLUNA TOTAL
+```
+```{r}
+aq_tudo_tratado <- aq_tudo
+  
+aq_tudo_tratado[, 4:4] <- sapply(aq_tudo_tratado[, 4:4], as.character)
+
+aq_tudo_tratado %>%
+  filter(year(AnoMesAtendimento) >=2015 & year(AnoMesAtendimento) <=2019
+         & Sexo=="F"
+         ) %>%
+  group_by(Estadio,AnoMesAtendimento,Regiao) %>%
+  summarise(Qtd=sum(Qtd)) %>%
+  ggplot(aes(x=AnoMesAtendimento, y=Qtd/1000, group=Estadio, color=Estadio)) + 
+  geom_line(aes(linetype=Estadio)) +
+  geom_point(aes(shape=Estadio)) +
+  facet_wrap(Regiao ~., ncol = 5) +
+  labs_pubr() + theme_pubr() +
+  scale_x_date(limits = as.Date(c("2009-12-01", "2019-12-01")),
+  date_breaks = "36 month",date_labels = "%b/%y") + # month/year
+  #scale_x_date(date_breaks = "36 month", date_labels = "%b %y") +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  labs(title= "Quimioterapia",x = "Mês e ano do atendimento", y = "Quantidade (mil)") # title graph, x and y
+```
+# AR*
+Contagem dos estadiamentos nas APACs de AR* - gerou um novo csv que unificou todos os arquivos. 
+```{r}
+ar_tudo <- read_csv("~/SIA_SUS/SIA_SUS/CSV/AR_Estadios_Agrupado.csv",col_types = cols(AnoMesAtendimento = col_date(format = "%Y-%m-%d")))
+```
+•	Analisar a proporção de estadiamento clínico (0, I, II, III e IV) na faixa etária preconizada do rastreamento entre 2010 e 2019
+```{r}
+ar_tudo_sexo_f <- ar_tudo %>% filter(year(AnoMesAtendimento) >=2015 & year(AnoMesAtendimento) <=2019
+                                     & Sexo == "F") %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Estadio,FaixaEtaria) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+ar_tudo_sexo_f_faixa_etaria_como_coluna <- ar_tudo_sexo_f %>% pivot_wider(names_from = FaixaEtaria, values_from = Qtd,values_fn = sum)
+
+ar_tudo_sexo_f_faixa_etaria_como_coluna[, 2:2] <- sapply(ar_tudo_sexo_f_faixa_etaria_como_coluna[, 2:2], as.character)
+
+ar_tudo_sexo_f_faixa_etaria_como_coluna <- ar_tudo_sexo_f_faixa_etaria_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+ar_tudo_sexo_f_faixa_etaria_como_coluna %>%
+  kbl(
+    align = "llrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("AR Total" = 2, "Faixa Etária" = 4," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("Total" = 2, "Faixa Etária" = 4)) #____SEM COLUNA TOTAL
+```
+```{r}
+ar_tudo_sexo_f <- ar_tudo %>% filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2014 #2015-2019
+                                     & Sexo == "F") %>% mutate(FaixaEtaria = case_when(
+            Idade<40~ "<=39",
+            Idade<50~ "40-49",
+            Idade<70~ "50-69",
+            TRUE~ ">=70"
+          )) %>% group_by(Regiao,Estadio,FaixaEtaria) %>% summarise(Qtd=sum(Qtd), .groups = 'drop')
+
+ar_tudo_sexo_f_estadio_como_coluna <- filter(ar_tudo_sexo_f, FaixaEtaria=="50-69") %>% pivot_wider(names_from = Estadio, values_from = Qtd,values_fn = sum)
+
+ar_tudo_sexo_f_estadio_como_coluna[, 2:2] <- sapply(ar_tudo_sexo_f_estadio_como_coluna[, 2:2], as.character)
+
+ar_tudo_sexo_f_estadio_como_coluna <- ar_tudo_sexo_f_estadio_como_coluna  %>%
+  adorn_totals("col") %>% #____COM COLUNA TOTAL
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 2) %>% 
+  adorn_ns(position = "front")
+```
+```{r}
+ar_tudo_sexo_f_estadio_como_coluna %>%
+  kbl(
+    align = "llrrrrrr"
+  ) %>% #align -> alinhamento para cada coluna incluir 'c' (center), 'r' (right), 'l' (left)
+  kable_paper() %>%
+  column_spec(1, bold = T)%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))%>%
+  add_header_above(c("AR (2015-2019)" = 2, "Estadio" = 5," " = 1)) #____COM COLUNA TOTAL
+  #add_header_above(c("Total" = 2, "Estadio" = 5)) #____SEM COLUNA TOTAL
+```
+```{r}
+ar_tudo_tratado <- ar_tudo
+  
+ar_tudo_tratado[, 4:4] <- sapply(ar_tudo_tratado[, 4:4], as.character)
+
+ar_tudo_tratado %>%
+  filter(year(AnoMesAtendimento) >=2010 & year(AnoMesAtendimento) <=2019
+         & Sexo=="F"
+         ) %>%
+  group_by(Estadio,AnoMesAtendimento,Regiao) %>%
+  summarise(Qtd=sum(Qtd)) %>%
+  ggplot(aes(x=AnoMesAtendimento, y=Qtd/1000, group=Estadio, color=Estadio)) + 
+  geom_line(aes(linetype=Estadio)) +
+  geom_point(aes(shape=Estadio)) +
+  facet_wrap(Regiao ~., ncol = 5) +
+  labs_pubr() + theme_pubr() +
+  scale_x_date(limits = as.Date(c("2009-12-01", "2019-12-01")),
+  date_breaks = "36 month",date_labels = "%b/%y") + # month/year
+  #scale_x_date(date_breaks = "36 month", date_labels = "%b %y") +
+  theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  labs(title= "Radioterapia",x = "Mês e ano do atendimento", y = "Quantidade (mil)") # title graph, x and y
+```
+# Cobertura de Exames
+```{r}
+PopUF_F_FaixaEtaria <- read_delim("~/SIA_SUS/SIA_SUS/CSV/PopUF_F_FaixaEtaria.csv",
+delim = ";", escape_double = FALSE, locale = locale(decimal_mark = ","),
+trim_ws = TRUE)
+```
+```{r}
+Pop_regiao <- PopUF_F_FaixaEtaria %>% select(Regiao, starts_with("Dif"))
+```
+```{r}
+Pop_regiao_l <- pivot_longer(Pop_regiao, cols = Dif2010:Dif2019, names_to = "ano",values_to = "Populacao")
+```
+```{r}
+pa_tudo <- mutate(pa_tudo, ano=as.character(year(AnoMesAtendimento)))
+```
+```{r}
+Pop_regiao_l <- mutate(Pop_regiao_l, ano=substr(ano, 4,7))
+```
+```{r}
+pa_tudo_join <- left_join(filter (pa_tudo, ano %in% unique(Pop_regiao_l$ano)), Pop_regiao_l, by=c("Regiao","ano"))
+```
+
+
+

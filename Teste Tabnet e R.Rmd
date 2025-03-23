@@ -1,0 +1,182 @@
+---
+title: "Teste dos dados Tabnet e R"
+author: "Cintia Mesquita"
+date: "06/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Teste de comparação entre os dados dos CSVs do R com o DATASUS das PAs de Produção Ambulatorial.
+
+PAs Exames de Mamografia
+
+Bibliotecas
+```{r}
+library(sparklyr)
+library(tidyverse)
+library(foreign)
+library(data.table)
+library(highcharter)
+library(DT)
+library(janitor)
+library(knitr)
+library(descr)
+library(pander)
+library(plotly)
+
+```
+Configuração do Spark
+```{r}
+config <- spark_config()
+config$`sparklyr.cores.local` <- 16
+config$`sparklyr.shell.driver-memory` <- "64G"
+config$spark.memory.fraction <- 0.9
+config$spark.dynamicAllocation.enabled <- "true" # pode ser necessario em alguns casos
+```
+
+```{r}
+sc <- spark_connect(master = "local", config = config)
+```
+## Busca no data PAs em CSVs_Mamo
+```{r}
+diretorio <- "~/datasus.gov.br/SIASUS/PA-LaudosDiversos/CSVs_Mamo/"
+```
+
+```{r}
+leitura <- spark_read_csv(sc, name="PAMamos",path=diretorio)
+```
+
+```{r}
+pa_df <-  tbl(sc, "pamamos")
+```
+
+```{r teste UF SC}
+pa_df%>% filter(ESTADO=="SC")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+CSVs_Mamo - Exames de Mamografia para SC com valor igual no TabNET e no R por ano: 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009 e 2008. Teste feito em 07/04/2021.
+
+```{r teste UF GO}
+pa_df%>% filter(ESTADO=="GO")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+CSVs_Mamo - Exames de Mamografia para GO com valor igual no TabNET e no R por ano: 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009 e 2008. Teste feito em 07/04/2021.
+
+## Busca no data PAs em CSVs_Mamo2
+```{r}
+diretorio <- "~/datasus.gov.br/SIASUS/PA-LaudosDiversos/CSVs_Mamo2/"
+```
+
+```{r}
+leitura <- spark_read_csv(sc, name="PAMamos2",path=diretorio)
+```
+
+```{r}
+pa_df2 <-  tbl(sc, "pamamos2")
+```
+
+```{r teste UF SC}
+pa_df2%>% filter(ESTADO=="SC")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+CSVs_Mamo2 - Exames de Mamografia para SC com valor igual no TabNET e no R por ano: 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009 e 2008. Teste feito em 07/04/2021.
+
+```{r teste UF GO}
+pa_df2%>% filter(ESTADO=="GO")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+CSVs_Mamo2 - Exames de Mamografia para GO com valor igual no TabNET e no R por ano: 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009 e 2008. Teste feito em 07/04/2021.
+
+
+## Busca no data PAs em CSVs_MamoCID
+Neste CSVs_MamoCID tem outros Procedimentos - está confuso - Não tem os filtros só para os procedimentos associados aos exames de mamografia de 204030030 e 204030188.
+```{r}
+diretorio <- "~/datasus.gov.br/SIASUS/PA-LaudosDiversos/CSVs_MamoCID/"
+```
+
+```{r}
+leitura <- spark_read_csv(sc, name="PAMamosCID",path=diretorio)
+```
+
+```{r}
+pa_dfCID <-  tbl(sc, "pamamosCID")
+```
+
+```{r teste UF SC}
+pa_dfCID %>% filter(ESTADO=="SC"
+                   & PA_PROC_ID=="204030188"|PA_PROC_ID=="204030030"
+                   )%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+```{r}
+pa_dfCID%>% select(PA_PROC_ID)
+```
+ Tem infinitos procedimentos no CSVs_MamoCID
+ 
+#------------------------------------------------------------------------------- 
+ 
+## Teste de unificação feito em janeiro/2021
+Teste da unificação com o spark, usando o tabnet para validar os valor de exames em mamografia
+
+```{r teste UF SC}
+pa_df%>% filter(ESTADO=="SC")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+No estado de SC para os anos de 2008, 2009, 2010, 2015,2016,2017,2018 e 2019. Os valores encontrados para exame de mamografia tanto no Spark e como no Tabnet são iguais. Na past Prints do Ondrive tem a imagem do tabnet com os valores.
+
+
+```{r teste UF GO}
+pa_df%>% filter(ESTADO=="GO")%>% 
+                  group_by(ANO,PA_PROC_ID)%>%
+  summarise(QTDE = sum(PA_QTDPRO))%>%
+  arrange(ANO,PA_PROC_ID)
+```
+
+No estado de GO para os anos de 2015,2016,2017,2018 e 2019. Os valores encontrados para exame de mamografia tanto no Spark e como no Tabnet são iguais. Na past Prints do Ondrive tem a imagem do tabnet com os valores.
+
+#-------------------------------------------------------------------------------
+
+## Teste com datas
+Comparar a data de PA_MVM com a data de PA_CMP, no geral são datas diferentes: PA_CMP - data de realização do Procedimento / Competência (atendimento ao paciente);  PA_MVM  - Data de Processamento / Movimento (AAAAMM) 
+```{r}
+pa_df%>% select(PA_MVM,PA_CMP)%>% count(PA_MVM,PA_CMP)%>%arrange(PA_CMP)
+```
+
+descrição das APACs Produção Ambulatorial
+PA_MVM - Data de Processamento / Movimento (AAAAMM)
+PA_CMP - Data da Realização do Procedimento / Competência (AAAAMM)
+PA_PROC_ID - Código do Procedimento Ambulatorial
+PA_CIDPRI - CID9 Principal (APAC ou BPA-I)
+PA_CIDSEC - CID Secundário (APAC)
+PA_CIDCAS CID - Causas Associadas (APAC)
+PA_IDADE - Idade do paciente em anos
+IDADEMIN -Idade mínima do paciente para realização do procedimento
+PA_SEXO - Sexo do paciente
+PA_QTDPRO - Quantidade Produzida (APRESENTADA)
+PA_QTDAPR - Quantidade Aprovada do procedimento
+PA_ETNIA - Etnia do paciente
+
+
+```{r}
+spark_disconnect_all()
+```

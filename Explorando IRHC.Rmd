@@ -1,0 +1,195 @@
+---
+title: "Explorando IRHC"
+author: "Cintia Mesquita"
+date: "24/05/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(read.dbc)
+library(tidyverse)
+library(foreign)
+```
+
+## Explrando IRHC
+
+## Classificação do CA de mama por estadiamento -> inicia em 1999.
+
+```{r}
+Inca00 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc00.dbf")
+filter(Inca00, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca01 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc01.dbf")
+filter(Inca01, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca02 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc02.dbf")
+filter(Inca02, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca03 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc03.dbf")
+filter(Inca03, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca04 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc04.dbf")
+filter(Inca04, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca05 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc05.dbf")
+filter(Inca05, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca06 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc06.dbf")
+filter(Inca06, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca07 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc07.dbf")
+filter(Inca07, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca08 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc08.dbf")
+filter(Inca08, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca09 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc09.dbf")
+filter(Inca09, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+filter(Inca10, LOCTUDET=="C50") %>%
+  select(ANOPRIDI,BASMAIMP,ESTADIAG,EXDIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca11 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc11.dbf")
+filter(Inca11, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca12 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc12.dbf")
+filter(Inca12, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca13 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc13.dbf")
+filter(Inca13, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca14 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc14.dbf")
+filter(Inca14, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca15 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc15.dbf")
+filter(Inca15, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca16 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc16.dbf")
+filter(Inca16, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca17 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc17.dbf")
+filter(Inca17, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca18 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc18.dbf")
+filter(Inca18, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+```{r}
+Inca19 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc19.dbf")
+filter(Inca19, LOCTUDET=="C50") %>%
+  select(ESTADIAG) %>% count(ESTADIAG)
+```
+
+```{r}
+Inca19 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc19.dbf")
+filter(Inca19, LOCTUDET=="C50") %>%
+  group_by(ESTADIAG)%>% summarise(Qtde=n())
+```
+
+## Testes
+Codificação do grupamento do estádio clínico segundo classificação TNM 
+ESTADIAG: Estadiamento clínico do tumor (TNM) - Grupo 
+0.Estadio insitu;1.EstadioI;2.EstadioII;3.EstadioIII;4.EstadioIV;A,B,C,D,Z.Outro estadiamento;8.Nao se aplica;9.Sem informacao.
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+  filter(Inca10,LOCTUDET=="C50")
+```
+
+```{r}
+dim(Inca10)
+```
+```
+Datas
+ANOPRIDI: Ano do diagnóstico (1899a2020)
+ANTRI: Ano da triagem - NA (1923a2019)
+DATAINITRT: Data do início do primeiro tratamento específico para o tumor,no hospital (1899a2020)
+DATAOBITO: Data do óbito - NA
+DATAPRICON: Data da 1ª consulta - OK
+DTDIAGNO:Data do primeiro diagnóstico (1899a2020)
+DTINITRT:Ano do início do primeiro tratamento específico para o tumor,no hospital - NA (1899a2020)
+DTPRICON: Ano da 1ª consulta - OK
+DTTRIAGE:Data da triagem (1923a2019)
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+filter(Inca10,LOCTUDET=="C50")%>%
+  select(DATAPRICON,DTPRICON)%>% count(DATAPRICON,DTPRICON)%>% arrange(DATAPRICON)%>%View()
+```
+Exames por imagem - muitos NA - No aplly
+BASMAIMP: Base mais importante para o diagnóstico do tumor - 1.Clínica; 2.Pesquisa clínica; 3.Exame por imagem; 4.Marcadores tumorais; 5.Citologia; 6.Histologia da metástase; 7.Histologia do tumor primário; 9.Sem informação
+EXDIAG: Exames relevantes para o diagnóstico e planejamento da terapêutica do tumor - 1.Exame clínico e patologia clínica; 2.Exames por imagem; 3.Endoscopia e cirurgia exploradora; 4.Anatomia patológica; 5.Marcadores tumorais; 8.Não se aplica; 9. Sem informação
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+  filter(Inca10,LOCTUDET=="C50")%>%
+  select(BASMAIMP,EXDIAG)%>% count(BASMAIMP)%>% arrange(BASMAIMP)%>%View()
+```
+Região
+LOCALNAS: Local de nascimento - No apply
+ESTADRES: UF de procedência (residência) - OK
+MUUH: Município da unidade hospitalar - OK
+PROCEDEN: Código do Município de procedência (residência) - (7777777And9999999)
+UFUH: UF da unidade hospitalar - OK
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+  filter(Inca10,LOCTUDET=="C50")%>%
+  select(MUUH,UFUH)%>% count(MUUH)%>% arrange(MUUH)%>%View()
+```
+CID C50
+LOCTUDET: Localização primária (Categoria 3d) - OK
+LOCTUPRI: Localização primária detalhada (Subcategoria 4d) - No apply
+LOCTUPRO: Localização provável do tumor primário (somente para os casos em que a localização primária do tumor é desconhecida) - NA
+```{r}
+Inca10 <- read.dbf("~/INCA/RHC_dwnld_20210520/rhc10.dbf")
+  filter(Inca10,LOCTUDET=="C50")%>%
+  select(LOCTUDET,LOCTUPRI,LOCTUPRO)%>% count(LOCTUDET,LOCTUPRI,LOCTUPRO)%>% arrange(LOCTUPRI)%>%View()
+```
+
